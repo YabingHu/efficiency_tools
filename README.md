@@ -7,6 +7,7 @@
 | 项目 | 描述 | 技术栈 |
 |------|------|--------|
 | [workbench](./workbench) | 工作台 — 四象限任务管理、每日任务、团队任务跟进 | React + Vite |
+| [ai-daily-digest](./ai-daily-digest) | AI 每日早报 — 抓取 LLM 领域资讯，生成中文摘要早报 HTML | Python |
 
 ---
 
@@ -56,3 +57,49 @@ npm run dev
 - **@dnd-kit** — 拖拽排序
 - **localStorage** — 数据持久化
 - **Inter** — 字体
+
+---
+
+## ai-daily-digest · AI 每日早报
+
+> 每天定时抓取大模型领域资讯，调用大模型生成中文摘要与点评，输出 HTML 早报
+
+### 功能
+
+- 多源抓取：HuggingFace Daily Papers、arXiv、GitHub Trending、公司博客 RSS、Hacker News
+- 调用 OpenAI 兼容接口批量生成中文摘要、一句话点评与重要度评分
+- 跨板块去重，按重要度 / 热度排序渲染
+- Jinja2 渲染为 HTML 早报，输出 `output/YYYY-MM-DD.html`（同时复制为 `latest.html`）
+- 单源抓取失败不影响整体流程
+
+### 快速开始
+
+```powershell
+cd ai-daily-digest
+
+# 1. 安装依赖
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 2. 配置 API key
+copy .env.example .env    # 然后编辑 .env 填入 LLM_API_KEY
+
+# 3. 手动运行
+.venv\Scripts\python.exe -m src.main
+
+# 仅测试抓取与渲染（不调用大模型，无需 key）
+.venv\Scripts\python.exe -m src.main --no-llm
+
+# 4. 注册每日定时任务（默认每天 08:00，错过自动补跑）
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Time 08:00
+```
+
+生成结果在 `output/YYYY-MM-DD.html`，最新一期同时复制为 `output/latest.html`。
+
+配置见 `config.yaml`（数据源、板块开关与条数、模型 base_url / 模型名、RSS 源列表）。
+
+### 技术栈
+
+- **Python** + `openai` 兼容接口
+- **feedparser** / **BeautifulSoup** — RSS 与网页抓取
+- **Jinja2** — HTML 渲染

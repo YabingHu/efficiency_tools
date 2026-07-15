@@ -1,0 +1,76 @@
+# LLM 每日早报生成器配置
+timezone: Asia/Shanghai
+output_dir: output
+
+llm:
+  base_url: https://llm-sd31i4a7ip2ecfyq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+  model: deepseek-v4-flash
+  batch_size: 12        # 每次调用摘要的条目数
+  max_retries: 2
+  temperature: 0.3
+  # API key 放在 .env 文件的 LLM_API_KEY 中，不要写在这里
+
+# 早报板块（按此顺序渲染），limit 为每个板块最终保留条数
+sections:
+  papers:
+    enabled: true
+    title: "📄 今日论文精选"
+    subtitle: "HuggingFace Daily Papers 社区高赞"
+    limit: 8
+  arxiv:
+    enabled: true
+    title: "🔬 arXiv 新论文"
+    subtitle: "cs.CL / cs.AI / cs.LG 最新提交"
+    limit: 6
+  github:
+    enabled: true
+    title: "🔥 GitHub 热榜"
+    subtitle: "今日 Trending 中的 AI 项目"
+    limit: 8
+  industry:
+    enabled: true
+    title: "🏢 业界动态"
+    subtitle: "公司博客与科技媒体"
+    limit: 8
+  community:
+    enabled: true
+    title: "💬 社区热议"
+    subtitle: "Hacker News 高分讨论"
+    limit: 5
+
+sources:
+  hf_papers:
+    max_fetch: 16          # 抓取数量（最终由 limit 截断）
+  arxiv:
+    categories: [cs.CL, cs.AI, cs.LG]
+    max_results: 80
+    lookback_hours: 36
+    keywords: [llm, large language model, language model, gpt, transformer,
+               agent, reasoning, rlhf, instruction, multimodal, diffusion,
+               fine-tun, retrieval, rag, benchmark, alignment, distillation,
+               quantization, mixture-of-experts, moe, chain-of-thought]
+  github:
+    keywords: [llm, gpt, ai, agent, rag, model, transformer, chat, claude,
+               deepseek, gemini, qwen, inference, embedding, diffusion,
+               neural, machine learning, ml, copilot, assistant]
+    max_fetch: 15
+  rss:
+    lookback_hours: 48
+    feeds:
+      - name: OpenAI Blog
+        url: https://openai.com/news/rss.xml
+      - name: Google AI Blog
+        url: https://blog.google/technology/ai/rss/
+      - name: DeepMind Blog
+        url: https://deepmind.google/blog/rss.xml
+      - name: HuggingFace Blog
+        url: https://huggingface.co/blog/feed.xml
+      - name: 量子位
+        url: https://www.qbitai.com/category/%e8%b5%84%e8%ae%af/feed
+      - name: 新智元
+        url: https://link.baai.ac.cn/@AI_era.rss
+      # 可自行追加更多 RSS 源，格式: {name: 名称, url: 地址}
+  hackernews:
+    queries: ["LLM", "GPT", "Claude", "DeepSeek", "open source model"]
+    min_points: 40
+    lookback_hours: 30

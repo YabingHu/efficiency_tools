@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大模型每日早报 · {{ date_str }}</title>
+<style>
+  :root {
+    --primary: #4f46e5;
+    --primary-light: #eef2ff;
+    --text: #1f2937;
+    --text-light: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f9fafb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 0 16px 48px; }
+  header {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #a855f7 100%);
+    color: #fff; text-align: center; padding: 36px 16px 28px;
+    border-radius: 0 0 20px 20px; margin-bottom: 20px;
+  }
+  header h1 { font-size: 26px; letter-spacing: 2px; }
+  header .date { margin-top: 8px; font-size: 14px; opacity: .9; }
+  .overview {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .overview h2 { font-size: 16px; color: var(--primary); margin-bottom: 10px; }
+  .overview li { margin-left: 20px; margin-bottom: 6px; font-size: 14.5px; }
+  section { margin-bottom: 30px; }
+  .section-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .section-header h2 { font-size: 19px; }
+  .section-header .sub { font-size: 12.5px; color: var(--text-light); }
+  .section-line { height: 3px; width: 48px; background: var(--primary); border-radius: 2px; margin-bottom: 14px; }
+  .card {
+    background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--primary);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .card .title { font-size: 15.5px; font-weight: 600; }
+  .card .title a { color: var(--text); text-decoration: none; }
+  .card .title a:hover { color: var(--primary); }
+  .card .summary { font-size: 14px; margin-top: 6px; color: #374151; }
+  .card .comment {
+    margin-top: 8px; font-size: 13.5px; color: #92400e;
+    background: #fffbeb; border-radius: 6px; padding: 6px 10px;
+  }
+  .card .footer { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    font-size: 12px; padding: 1px 9px; border-radius: 999px;
+    background: var(--primary-light); color: var(--primary);
+  }
+  .badge.hot { background: #fef2f2; color: #dc2626; }
+  .stars { font-size: 12px; color: var(--text-light); }
+  .empty { color: var(--text-light); font-size: 14px; padding: 8px 4px; }
+  footer.page {
+    text-align: center; color: var(--text-light); font-size: 12.5px;
+    margin-top: 36px; border-top: 1px solid var(--border); padding-top: 16px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 大模型每日早报</h1>
+  <div class="date">{{ date_str }} · {{ weekday }}</div>
+</header>
+<div class="container">
+
+  {% if overview %}
+  <div class="overview">
+    <h2>⚡ 今日要点</h2>
+    <ul>
+      {% for point in overview %}<li>{{ point }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% for section in sections %}
+  <section>
+    <div class="section-header">
+      <h2>{{ section.title }}</h2>
+      <span class="sub">{{ section.subtitle }}</span>
+    </div>
+    <div class="section-line"></div>
+    {% if section.entries %}
+      {% for item in section.entries %}
+      <div class="card">
+        <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
+        {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
+        {% if item.comment %}<div class="comment">💡 {{ item.comment }}</div>{% endif %}
+        <div class="footer">
+          <span class="badge">{{ item.source }}</span>
+          {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
+          {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
+          {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
+          {% if item.section == 'community' %}<span class="stars">▲ {{ item.score|int }} · 💬 {{ item.meta.comments }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">今日该板块暂无内容（来源不可用或无更新）</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <footer class="page">
+    由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>
+    数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News
+  </footer>
+</div>
+</body>
+</html>
