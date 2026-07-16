@@ -30,8 +30,13 @@ sections:
   industry:
     enabled: true
     title: "🏢 业界动态"
-    subtitle: "公司博客与科技媒体"
+    subtitle: "OpenAI / Google / DeepMind / HuggingFace 官方博客"
     limit: 8
+  media:
+    enabled: true
+    title: "📰 行业媒体"
+    subtitle: "新智元 · 量子位 · 机器之心"
+    limit: 6
   community:
     enabled: true
     title: "💬 社区热议"
@@ -57,19 +62,36 @@ sources:
   rss:
     lookback_hours: 48
     feeds:
+      # section 决定该 feed 归入哪个板块（默认 industry），需与上面 sections 的 key 对应
       - name: OpenAI Blog
         url: https://openai.com/news/rss.xml
+        section: industry
       - name: Google AI Blog
         url: https://blog.google/technology/ai/rss/
+        section: industry
       - name: DeepMind Blog
         url: https://deepmind.google/blog/rss.xml
+        section: industry
       - name: HuggingFace Blog
         url: https://huggingface.co/blog/feed.xml
+        section: industry
+      - name: Anthropic Blog
+        # Anthropic 官方无 RSS，用社区维护的镜像（每日自动更新，如失效需换源）
+        url: https://tim-hilde.github.io/anthropic-rss/rss.xml
+        section: industry
+      - name: NVIDIA AI Blog
+        url: https://blogs.nvidia.com/feed/
+        section: industry
       - name: 量子位
         url: https://www.qbitai.com/category/%e8%b5%84%e8%ae%af/feed
+        section: media
       - name: 新智元
         url: https://link.baai.ac.cn/@AI_era.rss
-      # 可自行追加更多 RSS 源，格式: {name: 名称, url: 地址}
+        section: media
+      - name: 机器之心
+        url: http://plink.anyfeeder.com/weixin/almosthuman2014
+        section: media
+      # 可自行追加更多 RSS 源，格式: {name: 名称, url: 地址, section: industry|media}
   hackernews:
     queries: ["LLM", "GPT", "Claude", "DeepSeek", "open source model"]
     min_points: 40

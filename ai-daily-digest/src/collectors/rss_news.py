@@ -30,6 +30,7 @@ def collect(cfg: dict, today) -> list[NewsItem]:
     items = []
     for feed_cfg in src_cfg.get("feeds", []):
         name, url = feed_cfg["name"], feed_cfg["url"]
+        section = feed_cfg.get("section", "industry")
         try:
             resp = requests.get(url, headers=HEADERS, timeout=30)
             resp.raise_for_status()
@@ -61,7 +62,7 @@ def collect(cfg: dict, today) -> list[NewsItem]:
             uid = hashlib.md5(link.encode()).hexdigest()[:12]
             items.append(NewsItem(
                 id=f"rss:{uid}",
-                section="industry",
+                section=section,
                 title=title,
                 url=link,
                 source=name,
