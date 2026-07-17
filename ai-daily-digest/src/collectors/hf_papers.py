@@ -2,8 +2,7 @@
 import logging
 from datetime import date, timedelta
 
-import requests
-
+from ..http_client import get as http_get
 from ..models import NewsItem
 
 log = logging.getLogger(__name__)
@@ -21,8 +20,8 @@ def collect(cfg: dict, today: date) -> list[NewsItem]:
     for offset in range(4):
         d = today - timedelta(days=offset)
         try:
-            resp = requests.get(API, params={"date": d.isoformat()},
-                                headers=HEADERS, timeout=30)
+            resp = http_get(API, cfg=cfg, params={"date": d.isoformat()},
+                            headers=HEADERS)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:

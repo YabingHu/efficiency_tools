@@ -8,8 +8,24 @@ param(
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $batPath = Join-Path $projectRoot "scripts\run_daily.bat"
+$pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$envPath = Join-Path $projectRoot ".env"
 
-$action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory $projectRoot
+try {
+    [void][datetime]::ParseExact($Time, "HH:mm", [Globalization.CultureInfo]::InvariantCulture)
+} catch {
+    throw "-Time 必须使用 HH:mm 格式，例如 08:00"
+}
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    throw "缺少虚拟环境：$pythonPath"
+}
+if (-not (Test-Path -LiteralPath $envPath)) {
+    throw "缺少 .env：请先复制 .env.example 并配置 API key"
+}
+
+$arguments = "/d /c `"$batPath`""
+$action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument $arguments `
+    -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 # StartWhenAvailable: 错过触发时间（如未开机）则开机后尽快补跑
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `

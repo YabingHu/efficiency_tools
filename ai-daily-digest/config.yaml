@@ -1,6 +1,12 @@
 # LLM 每日早报生成器配置
 timezone: Asia/Shanghai
 output_dir: output
+collection_workers: 5
+
+http:
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 30
+  retries: 2
 
 llm:
   base_url: https://llm-sd31i4a7ip2ecfyq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
@@ -8,6 +14,8 @@ llm:
   batch_size: 12        # 每次调用摘要的条目数
   max_retries: 2
   temperature: 0.3
+  timeout_seconds: 60
+  max_output_tokens: 4096
   # API key 放在 .env 文件的 LLM_API_KEY 中，不要写在这里
 
 # 早报板块（按此顺序渲染），limit 为每个板块最终保留条数
@@ -48,8 +56,11 @@ sources:
     max_fetch: 16          # 抓取数量（最终由 limit 截断）
   arxiv:
     categories: [cs.CL, cs.AI, cs.LG]
-    max_results: 80
+    max_results: 50
     lookback_hours: 36
+    max_staleness_hours: 120
+    read_timeout_seconds: 15
+    retries: 0  # arXiv 易触发 429；失败时由其他论文源降级兜底
     keywords: [llm, large language model, language model, gpt, transformer,
                agent, reasoning, rlhf, instruction, multimodal, diffusion,
                fine-tun, retrieval, rag, benchmark, alignment, distillation,
@@ -61,6 +72,9 @@ sources:
     max_fetch: 15
   rss:
     lookback_hours: 48
+    max_staleness_hours: 96  # 超过该时长未更新的源不再冒充“今日资讯”
+    max_items_per_feed: 20
+    workers: 6
     feeds:
       # section 决定该 feed 归入哪个板块（默认 industry），需与上面 sections 的 key 对应
       - name: OpenAI Blog
@@ -96,3 +110,4 @@ sources:
     queries: ["LLM", "GPT", "Claude", "DeepSeek", "open source model"]
     min_points: 40
     lookback_hours: 30
+    workers: 5

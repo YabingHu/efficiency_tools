@@ -1,10 +1,12 @@
 """GitHub Trending（日榜）采集器。"""
 import logging
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-import requests
 from bs4 import BeautifulSoup
 
+from ..http_client import get as http_get
 from ..models import NewsItem
 
 log = logging.getLogger(__name__)
@@ -14,12 +16,17 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) daily-report
 
 
 def collect(cfg: dict, today) -> list[NewsItem]:
+    current_date = datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
+    if today != current_date:
+        log.warning("GitHub Trending 不支持历史回放，跳过报告日期 %s", today)
+        return []
+
     src_cfg = cfg["sources"]["github"]
     keywords = [k.lower() for k in src_cfg.get("keywords", [])]
     max_fetch = src_cfg.get("max_fetch", 15)
 
     try:
-        resp = requests.get(URL, headers=HEADERS, timeout=30)
+        resp = http_get(URL, cfg=cfg, headers=HEADERS)
         resp.raise_for_status()
     except Exception as e:
         log.warning("GitHub Trending 请求失败: %s", e)

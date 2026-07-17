@@ -6,71 +6,142 @@
 <title>大模型每日早报 · {{ date_str }}</title>
 <style>
   :root {
-    --primary: #4f46e5;
-    --primary-light: #eef2ff;
-    --text: #1f2937;
-    --text-light: #6b7280;
-    --border: #e5e7eb;
-    --bg: #f9fafb;
+    --primary: #5b5bd6;
+    --primary-dark: #4141a5;
+    --primary-light: #f0efff;
+    --text: #1d2433;
+    --text-soft: #465065;
+    --text-light: #7a8498;
+    --border: #e7e9f0;
+    --surface: #ffffff;
+    --bg: #f5f6fa;
+    --shadow: 0 12px 36px rgba(37, 43, 67, .06);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.7;
+    background: var(--bg); color: var(--text); line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
   }
-  .container { max-width: 900px; margin: 0 auto; padding: 0 16px 48px; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 28px 80px; }
   header {
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #a855f7 100%);
-    color: #fff; text-align: center; padding: 36px 16px 28px;
-    border-radius: 0 0 20px 20px; margin-bottom: 20px;
+    position: relative; overflow: hidden;
+    max-width: 1120px; margin: 24px auto 52px; padding: 52px 56px;
+    background: linear-gradient(125deg, #4c50c8 0%, #6855db 55%, #8c56df 100%);
+    color: #fff; border-radius: 28px;
+    box-shadow: 0 24px 60px rgba(83, 73, 190, .22);
   }
-  header h1 { font-size: 26px; letter-spacing: 2px; }
-  header .date { margin-top: 8px; font-size: 14px; opacity: .9; }
+  header::before, header::after {
+    content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+  }
+  header::before {
+    width: 280px; height: 280px; right: -75px; top: -135px;
+    background: rgba(255,255,255,.11);
+  }
+  header::after {
+    width: 160px; height: 160px; right: 145px; bottom: -115px;
+    background: rgba(255,255,255,.07);
+  }
+  .header-inner { position: relative; z-index: 1; }
+  header .eyebrow {
+    margin-bottom: 10px; font-size: 11px; font-weight: 700;
+    letter-spacing: 2.4px; text-transform: uppercase; opacity: .72;
+  }
+  header h1 { font-size: 34px; line-height: 1.3; letter-spacing: 1px; }
+  header .date { margin-top: 12px; font-size: 14px; opacity: .82; }
   .overview {
-    background: #fff; border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px; margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    background: linear-gradient(135deg, #fff 0%, #f8f7ff 100%);
+    border: 1px solid #e3e1fb; border-radius: 20px;
+    padding: 26px 30px; margin-bottom: 30px; box-shadow: var(--shadow);
   }
-  .overview h2 { font-size: 16px; color: var(--primary); margin-bottom: 10px; }
-  .overview li { margin-left: 20px; margin-bottom: 6px; font-size: 14.5px; }
-  section { margin-bottom: 30px; }
-  .section-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
-  .section-header h2 { font-size: 19px; }
-  .section-header .sub { font-size: 12.5px; color: var(--text-light); }
-  .section-line { height: 3px; width: 48px; background: var(--primary); border-radius: 2px; margin-bottom: 14px; }
+  .overview h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 12px; }
+  .overview li { margin-left: 20px; margin-bottom: 8px; font-size: 15px; color: var(--text-soft); }
+  .section-nav {
+    display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 16px;
+    margin-bottom: 38px; scrollbar-width: none;
+  }
+  .section-nav::-webkit-scrollbar { display: none; }
+  .section-nav a {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px;
+    color: var(--text-soft); text-decoration: none; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 8px 13px;
+    font-size: 13px; box-shadow: 0 4px 14px rgba(37,43,67,.035);
+    transition: color .2s, border-color .2s, transform .2s;
+  }
+  .section-nav a:hover { color: var(--primary); border-color: #c9c7ef; transform: translateY(-1px); }
+  .section-nav .count { color: var(--text-light); font-size: 11px; }
+  section { margin-bottom: 64px; scroll-margin-top: 28px; }
+  .section-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 20px; margin-bottom: 20px;
+  }
+  .section-heading { min-width: 0; }
+  .section-header h2 { font-size: 22px; line-height: 1.4; letter-spacing: -.2px; }
+  .section-header .sub { display: block; margin-top: 4px; font-size: 13px; color: var(--text-light); }
+  .section-total { flex: 0 0 auto; font-size: 12px; color: var(--text-light); }
+  .entries { display: grid; gap: 16px; }
   .card {
-    background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--primary);
-    border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    background: var(--surface); border: 1px solid rgba(226,228,237,.9);
+    border-radius: 18px; padding: 23px 25px;
+    box-shadow: var(--shadow); transition: transform .2s, box-shadow .2s;
   }
-  .card .title { font-size: 15.5px; font-weight: 600; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 16px 42px rgba(37,43,67,.09); }
+  .card .title { font-size: 16.5px; line-height: 1.5; font-weight: 650; letter-spacing: -.1px; }
   .card .title a { color: var(--text); text-decoration: none; }
   .card .title a:hover { color: var(--primary); }
-  .card .summary { font-size: 14px; margin-top: 6px; color: #374151; }
-  .card .comment {
-    margin-top: 8px; font-size: 13.5px; color: #92400e;
-    background: #fffbeb; border-radius: 6px; padding: 6px 10px;
+  .card .summary {
+    max-width: 88ch; font-size: 14.5px; line-height: 1.82;
+    margin-top: 10px; color: var(--text-soft); overflow-wrap: anywhere;
   }
-  .card .footer { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .card .comment {
+    margin-top: 14px; font-size: 13.5px; color: #8a5311;
+    background: #fff9ec; border-radius: 10px; padding: 10px 13px;
+  }
+  .card .footer { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .badge {
-    font-size: 12px; padding: 1px 9px; border-radius: 999px;
+    font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
     background: var(--primary-light); color: var(--primary);
   }
   .badge.hot { background: #fef2f2; color: #dc2626; }
   .stars { font-size: 12px; color: var(--text-light); }
-  .empty { color: var(--text-light); font-size: 14px; padding: 8px 4px; }
+  .empty {
+    color: var(--text-light); font-size: 14px; padding: 24px;
+    background: rgba(255,255,255,.55); border: 1px dashed #dfe2eb; border-radius: 16px;
+  }
   footer.page {
     text-align: center; color: var(--text-light); font-size: 12.5px;
-    margin-top: 36px; border-top: 1px solid var(--border); padding-top: 16px;
+    margin-top: 20px; border-top: 1px solid var(--border); padding-top: 24px;
+  }
+  @media (min-width: 920px) {
+    .section-github .entries, .section-community .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .section-github .card, .section-community .card { height: 100%; }
+  }
+  @media (max-width: 720px) {
+    header { margin: 0 0 34px; padding: 38px 24px; border-radius: 0 0 24px 24px; }
+    header h1 { font-size: 28px; }
+    .container { padding: 0 17px 56px; }
+    .overview { padding: 22px 20px; border-radius: 16px; }
+    .section-nav { margin-bottom: 28px; }
+    section { margin-bottom: 50px; }
+    .section-header { align-items: flex-start; margin-bottom: 16px; }
+    .section-header h2 { font-size: 20px; }
+    .section-total { padding-top: 5px; }
+    .card { padding: 19px 18px; border-radius: 15px; }
+    .card .title { font-size: 16px; }
+    .card .summary { font-size: 14px; line-height: 1.76; }
   }
 </style>
 </head>
 <body>
 <header>
-  <h1>🤖 大模型每日早报</h1>
-  <div class="date">{{ date_str }} · {{ weekday }}</div>
+  <div class="header-inner">
+    <div class="eyebrow">AI Intelligence Briefing</div>
+    <h1>🤖 大模型每日早报</h1>
+    <div class="date">{{ date_str }} · {{ weekday }}</div>
+  </div>
 </header>
-<div class="container">
+<main class="container">
 
   {% if overview %}
   <div class="overview">
@@ -81,14 +152,23 @@
   </div>
   {% endif %}
 
+  <nav class="section-nav" aria-label="日报板块">
+    {% for section in sections %}
+    <a href="#section-{{ section.key }}">{{ section.title }} <span class="count">{{ section.entries|length }}</span></a>
+    {% endfor %}
+  </nav>
+
   {% for section in sections %}
-  <section>
+  <section id="section-{{ section.key }}" class="section-{{ section.key }}">
     <div class="section-header">
-      <h2>{{ section.title }}</h2>
-      <span class="sub">{{ section.subtitle }}</span>
+      <div class="section-heading">
+        <h2>{{ section.title }}</h2>
+        <span class="sub">{{ section.subtitle }}</span>
+      </div>
+      <span class="section-total">{{ section.entries|length }} 条精选</span>
     </div>
-    <div class="section-line"></div>
     {% if section.entries %}
+    <div class="entries">
       {% for item in section.entries %}
       <div class="card">
         <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
@@ -103,6 +183,7 @@
         </div>
       </div>
       {% endfor %}
+    </div>
     {% else %}
       <div class="empty">今日该板块暂无内容（来源不可用或无更新）</div>
     {% endif %}
@@ -113,6 +194,6 @@
     由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>
     数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News
   </footer>
-</div>
+</main>
 </body>
 </html>

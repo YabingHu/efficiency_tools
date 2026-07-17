@@ -1,11 +1,12 @@
 """arXiv 新论文采集器（官方 Atom API）。"""
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import feedparser
-import requests
 
+from ..http_client import get as http_get
 from ..models import NewsItem
+from ..utils import report_end_utc
 
 log = logging.getLogger(__name__)
 
@@ -18,15 +19,33 @@ def collect(cfg: dict, today) -> list[NewsItem]:
     cats = src_cfg.get("categories", ["cs.CL"])
     keywords = [k.lower() for k in src_cfg.get("keywords", [])]
     lookback = timedelta(hours=src_cfg.get("lookback_hours", 36))
+    max_staleness = timedelta(hours=src_cfg.get("max_staleness_hours", 120))
+    as_of = report_end_utc(today, cfg.get("timezone", "Asia/Shanghai"))
 
-    query = " OR ".join(f"cat:{c}" for c in cats)
+    category_query = " OR ".join(f"cat:{c}" for c in cats)
+    range_start = as_of - max_staleness
+    submitted_range = (
+        f"submittedDate:[{range_start.strftime('%Y%m%d%H%M')} "
+        f"TO {as_of.strftime('%Y%m%d%H%M')}]"
+    )
+    query = f"({category_query}) AND {submitted_range}"
     try:
-        resp = requests.get(API, params={
-            "search_query": query,
-            "sortBy": "submittedDate",
-            "sortOrder": "descending",
-            "max_results": src_cfg.get("max_results", 80),
-        }, headers=HEADERS, timeout=30)
+        resp = http_get(
+            API,
+            cfg=cfg,
+            retries=src_cfg.get("retries", 1),
+            timeout=(
+                cfg.get("http", {}).get("connect_timeout_seconds", 5),
+                src_cfg.get("read_timeout_seconds", 20),
+            ),
+            params={
+                "search_query": query,
+                "sortBy": "submittedDate",
+                "sortOrder": "descending",
+                "max_results": src_cfg.get("max_results", 50),
+            },
+            headers=HEADERS,
+        )
         resp.raise_for_status()
     except Exception as e:
         log.warning("arXiv 请求失败: %s", e)
@@ -39,20 +58,25 @@ def collect(cfg: dict, today) -> list[NewsItem]:
 
     def _pub(entry):
         try:
-            return datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            return datetime(*entry.published_parsed[:6], tzinfo=UTC)
         except Exception:
             return None
 
-    # arXiv 周末/节假日不发布新论文，固定回看窗口会落空；
-    # 改为以 feed 中最新一批论文的时间为基准向前取 lookback 窗口
-    newest = max((t for t in (_pub(e) for e in feed.entries) if t), default=None)
+    # 周末允许回退到最近一批，但绝不越过目标报告日期或最大陈旧阈值。
+    newest = max(
+        (t for t in (_pub(e) for e in feed.entries) if t and t <= as_of),
+        default=None,
+    )
     if newest is None:
+        return []
+    if as_of - newest > max_staleness:
+        log.warning("arXiv 最新数据已超过陈旧阈值，跳过")
         return []
     cutoff = newest - lookback
     items = []
     for entry in feed.entries:
         published = _pub(entry)
-        if published is None or published < cutoff:
+        if published is None or published < cutoff or published > as_of:
             continue
         blob = (entry.title + " " + entry.summary).lower()
         if keywords and not any(k in blob for k in keywords):

@@ -1,0 +1,69 @@
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
+
+from src.collectors import arxiv_papers, github_trending, hackernews
+from src.utils import report_end_utc
+
+
+class Response:
+    content = b"feed"
+
+    def __init__(self, data=None):
+        self.data = data or {}
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.data
+
+
+def test_github_skips_historical_report(monkeypatch, cfg):
+    monkeypatch.setattr(
+        github_trending,
+        "http_get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("不应请求当天榜单")),
+    )
+    assert github_trending.collect(cfg, date(2020, 1, 1)) == []
+
+
+def test_hackernews_uses_report_date_for_time_range(monkeypatch, cfg):
+    captured = {}
+    cfg["sources"]["hackernews"]["queries"] = ["LLM"]
+    cfg["sources"]["hackernews"]["workers"] = 1
+
+    def fake_get(*args, **kwargs):
+        captured.update(kwargs["params"])
+        return Response({"hits": []})
+
+    monkeypatch.setattr(hackernews, "http_get", fake_get)
+    report_date = date(2026, 7, 10)
+    hackernews.collect(cfg, report_date)
+    until = int(report_end_utc(report_date, cfg["timezone"]).timestamp())
+    assert f"created_at_i<={until}" in captured["numericFilters"]
+
+
+def test_arxiv_query_and_filter_are_anchored_to_report_date(monkeypatch, cfg):
+    captured = {}
+    published = datetime(2026, 7, 10, 8, tzinfo=UTC)
+    entry = SimpleNamespace(
+        id="https://arxiv.org/abs/2607.01234v1",
+        title="LLM test paper",
+        summary="language model research",
+        published_parsed=published.timetuple(),
+    )
+
+    def fake_get(*args, **kwargs):
+        captured.update(kwargs["params"])
+        return Response()
+
+    monkeypatch.setattr(arxiv_papers, "http_get", fake_get)
+    monkeypatch.setattr(
+        arxiv_papers.feedparser,
+        "parse",
+        lambda content: SimpleNamespace(entries=[entry]),
+    )
+    result = arxiv_papers.collect(cfg, date(2026, 7, 10))
+    assert "submittedDate:" in captured["search_query"]
+    assert "20260710" in captured["search_query"]
+    assert [item.id for item in result] == ["arxiv:2607.01234"]
