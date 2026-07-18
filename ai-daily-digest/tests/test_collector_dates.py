@@ -43,6 +43,56 @@ def test_hackernews_uses_report_date_for_time_range(monkeypatch, cfg):
     assert f"created_at_i<={until}" in captured["numericFilters"]
 
 
+def test_hackernews_uses_self_post_body(monkeypatch, cfg):
+    cfg["sources"]["hackernews"]["queries"] = ["LLM"]
+    cfg["sources"]["hackernews"]["workers"] = 1
+
+    def fake_get(*args, **kwargs):
+        return Response({"hits": [{
+            "objectID": "42",
+            "title": "Ask HN: LLM testing",
+            "url": None,
+            "story_text": "<p>Detailed self post about evaluation and testing.</p>",
+            "points": 100,
+            "num_comments": 20,
+        }]})
+
+    monkeypatch.setattr(hackernews, "http_get", fake_get)
+    result = hackernews.collect(cfg, date(2026, 7, 18))
+    assert [item.id for item in result] == ["hn:42"]
+    assert "Detailed self post" in result[0].text
+    assert result[0].meta["content_available"] is True
+
+
+def test_hackernews_fetches_external_body_and_drops_unavailable(monkeypatch, cfg):
+    cfg["sources"]["hackernews"]["queries"] = ["LLM"]
+    cfg["sources"]["hackernews"]["workers"] = 1
+
+    def fake_get(*args, **kwargs):
+        return Response({"hits": [
+            {
+                "objectID": "good", "title": "Good article",
+                "url": "https://example.com/good", "story_text": None,
+                "points": 90, "num_comments": 10,
+            },
+            {
+                "objectID": "bad", "title": "Blocked article",
+                "url": "https://example.com/bad", "story_text": None,
+                "points": 80, "num_comments": 9,
+            },
+        ]})
+
+    monkeypatch.setattr(hackernews, "http_get", fake_get)
+    monkeypatch.setattr(
+        hackernews,
+        "extract_text_from_url",
+        lambda url, *args, **kwargs: "Substantial article body." if url.endswith("/good") else "",
+    )
+    result = hackernews.collect(cfg, date(2026, 7, 18))
+    assert [item.id for item in result] == ["hn:good"]
+    assert "Substantial article body" in result[0].text
+
+
 def test_arxiv_query_and_filter_are_anchored_to_report_date(monkeypatch, cfg):
     captured = {}
     published = datetime(2026, 7, 10, 8, tzinfo=UTC)

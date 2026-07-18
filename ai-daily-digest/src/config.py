@@ -69,6 +69,11 @@ def validate_config(cfg: dict) -> None:
     _positive_int(llm.get("batch_size", 12), "llm.batch_size", maximum=50)
     _positive_int(llm.get("timeout_seconds", 60), "llm.timeout_seconds", maximum=600)
     _positive_int(llm.get("max_output_tokens", 4096), "llm.max_output_tokens", maximum=32768)
+    _positive_int(
+        llm.get("max_input_chars_per_item", 2400),
+        "llm.max_input_chars_per_item",
+        maximum=20000,
+    )
     retries = llm.get("max_retries", 2)
     if isinstance(retries, bool) or not isinstance(retries, int) or not 0 <= retries <= 10:
         raise ValueError("llm.max_retries 必须是 0~10 的整数")
@@ -88,6 +93,21 @@ def validate_config(cfg: dict) -> None:
         section = feed.get("section", "industry")
         if section not in sections:
             raise ValueError(f"{path}.section 引用了不存在的板块: {section}")
+
+    hackernews = sources.get("hackernews", {})
+    if isinstance(hackernews, dict):
+        _positive_int(
+            hackernews.get("content_fetch_limit", 8),
+            "sources.hackernews.content_fetch_limit",
+            maximum=50,
+        )
+        _positive_int(
+            hackernews.get("min_content_chars", 160),
+            "sources.hackernews.min_content_chars",
+            maximum=5000,
+        )
+        if not isinstance(hackernews.get("require_content", True), bool):
+            raise ValueError("sources.hackernews.require_content 必须是布尔值")
 
     collection_workers = cfg.get("collection_workers", 5)
     _positive_int(collection_workers, "collection_workers", maximum=20)

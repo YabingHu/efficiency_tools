@@ -41,6 +41,9 @@ CI 或需要完全复现当前验证环境时，改用 `requirements.lock`。
 应用日志保存在 `logs/run.log`，按 5 MB 自动轮转并保留 5 份。
 最近一次运行的机器可读状态保存在 `output/run-status.json`。
 
+Hacker News 自帖会直接使用帖子正文；高热外链会在通过公网 URL 安全检查后提取
+文章正文。无法获得足够正文的条目会被跳过，避免生成“来源信息不足”的空洞卡片。
+
 ## Windows 定时任务
 
 ```powershell

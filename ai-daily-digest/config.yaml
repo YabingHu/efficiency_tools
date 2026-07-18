@@ -16,6 +16,7 @@ llm:
   temperature: 0.3
   timeout_seconds: 60
   max_output_tokens: 4096
+  max_input_chars_per_item: 2400  # 单条正文送入摘要的最大字符数
   # API key 放在 .env 文件的 LLM_API_KEY 中，不要写在这里
 
 # 早报板块（按此顺序渲染），limit 为每个板块最终保留条数
@@ -112,6 +113,9 @@ sources:
     min_points: 40
     lookback_hours: 30
     workers: 5
+    content_fetch_limit: 8  # 只为最高热度的外链抓正文，控制运行时间
+    min_content_chars: 160
+    require_content: true   # 正文无法获得时不展示，避免“信息不足”卡片
   community_sources:
     lookback_hours: 96
     lobsters:

@@ -85,6 +85,7 @@ class Summarizer:
         self.max_retries = llm.get("max_retries", 2)
         self.temperature = llm.get("temperature", 0.3)
         self.max_output_tokens = llm.get("max_output_tokens", 4096)
+        self.max_input_chars_per_item = llm.get("max_input_chars_per_item", 2400)
 
     def _chat(self, system_prompt: str, payload) -> str:
         last_err = None
@@ -125,7 +126,8 @@ class Summarizer:
         for i in range(0, len(items), self.batch_size):
             batch = items[i:i + self.batch_size]
             payload = [{"id": it.id, "title": it.title,
-                        "source": it.source, "text": it.text[:800]}
+                        "source": it.source,
+                        "text": it.text[:self.max_input_chars_per_item]}
                        for it in batch]
             try:
                 raw = self._chat(BATCH_PROMPT, payload)
