@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,6 +35,34 @@ CN_SOURCE_LABELS = {
     "baidu": "百度热搜",
     "toutiao": "今日头条",
 }
+
+# 明确的商业落地页可以直接过滤；普通内容只有同时出现促销和交易/课程信号时
+# 才会被判定为广告，避免误伤“模型限时开放”等正常行业动态。
+_CN_COMMERCIAL_URL_PATTERNS = (
+    re.compile(r"(?:^|\.)bilibili\.com/cheese/(?:play|play/|$)", re.IGNORECASE),
+)
+_CN_PROMOTION_PATTERN = re.compile(
+    r"限时\s*\d*\s*折|\d+(?:\.\d+)?\s*折(?:起|优惠)?|限时优惠|"
+    r"特价|秒杀|领券|优惠券|早鸟价|拼团|低至|立减|免费领取"
+)
+_CN_TRANSACTION_PATTERN = re.compile(
+    r"立即(?:购买|报名|抢购|下单)|点击(?:购买|报名|领取)|"
+    r"报名(?:入口|通道|截止)|付费(?:课|课程|专栏)|"
+    r"训练营|实战课|系统课|精品课|课程购买|购课"
+)
+
+
+def _is_chinese_community_ad(title: str, summary: str, url: str) -> bool:
+    """识别中文社区中的明显课程广告和促销内容。"""
+    normalized_url = url.lower().split("?", 1)[0].rstrip("/") + "/"
+    if any(pattern.search(normalized_url) for pattern in _CN_COMMERCIAL_URL_PATTERNS):
+        return True
+
+    content = f"{title} {summary}"
+    return bool(
+        _CN_PROMOTION_PATTERN.search(content)
+        and _CN_TRANSACTION_PATTERN.search(content)
+    )
 
 
 def _script_path(cfg: dict, language: str) -> Path | None:
@@ -232,6 +261,9 @@ def _chinese_items(payload: dict, allowed_sources: set[str]) -> list[NewsItem]:
             summary = _first_text(
                 raw, ("summary", "description", "desc", "excerpt", "snippet", "text")
             ) or title
+            if _is_chinese_community_ad(title, summary, url):
+                log.info("过滤中文社区广告：[%s] %s", platform, title[:100])
+                continue
             score, points, comments = _rank_score(raw)
             items.append(NewsItem(
                 id=_stable_id(f"last30days-cn-{platform}", raw, url),

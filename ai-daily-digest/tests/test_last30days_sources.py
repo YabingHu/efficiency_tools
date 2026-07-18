@@ -64,6 +64,38 @@ def test_chinese_platform_arrays_map_to_separate_section():
     assert all(item.section == "community_cn" for item in result)
 
 
+def test_chinese_results_filter_bilibili_paid_course_ads():
+    payload = {
+        "bilibili": [
+            {
+                "id": "course-ad",
+                "title": "【限时6折】小白玩转AI大模型应用开发",
+                "url": "https://www.bilibili.com/cheese/play/ss11176?query_from=0",
+                "description": "AI 智能体付费课程",
+            },
+            {
+                "id": "technical-video",
+                "title": "从零实现一个大模型 Agent",
+                "url": "https://www.bilibili.com/video/BV1example",
+                "description": "完整讲解工具调用与状态管理。",
+            },
+        ]
+    }
+
+    result = last30days_sources._chinese_items(payload, {"bilibili"})
+
+    assert [item.id for item in result] == ["last30days-cn-bilibili:technical-video"]
+
+
+def test_chinese_ad_filter_requires_strong_commercial_signals():
+    assert last30days_sources._is_chinese_community_ad(
+        "AI 实战训练营限时优惠", "立即报名，早鸟价立减 300 元", "https://example.com/course"
+    )
+    assert not last30days_sources._is_chinese_community_ad(
+        "新模型限时开放体验", "官方公布最新推理能力。", "https://example.com/release"
+    )
+
+
 def test_english_results_support_youtube_and_bluesky():
     payload = {
         "results": [
