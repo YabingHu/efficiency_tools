@@ -90,6 +90,7 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
             "title": sec_cfg["title"],
             "subtitle": sec_cfg.get("subtitle", ""),
             "entries": sec_items[:limit],
+            "initial_visible": min(cfg.get("initial_visible_items", 4), limit),
         })
 
     html = template.render(

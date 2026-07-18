@@ -42,6 +42,12 @@ def validate_config(cfg: dict) -> None:
     if not isinstance(output_dir, str) or output_path.is_absolute() or ".." in output_path.parts:
         raise ValueError("output_dir 必须是项目目录内的相对路径")
 
+    _positive_int(
+        cfg.get("initial_visible_items", 4),
+        "initial_visible_items",
+        maximum=20,
+    )
+
     sections = cfg.get("sections")
     if not isinstance(sections, dict) or not sections:
         raise ValueError("sections 必须是非空对象")
@@ -73,6 +79,11 @@ def validate_config(cfg: dict) -> None:
         llm.get("max_input_chars_per_item", 2400),
         "llm.max_input_chars_per_item",
         maximum=20000,
+    )
+    _positive_int(
+        llm.get("cache_retention_days", 30),
+        "llm.cache_retention_days",
+        maximum=365,
     )
     retries = llm.get("max_retries", 2)
     if isinstance(retries, bool) or not isinstance(retries, int) or not 0 <= retries <= 10:

@@ -2,6 +2,7 @@
 timezone: Asia/Shanghai
 output_dir: output
 collection_workers: 6
+initial_visible_items: 4  # 每个板块默认显示条数，其余内容可展开
 
 http:
   connect_timeout_seconds: 5
@@ -17,6 +18,7 @@ llm:
   timeout_seconds: 60
   max_output_tokens: 4096
   max_input_chars_per_item: 2400  # 单条正文送入摘要的最大字符数
+  cache_retention_days: 30        # 相同文章和内容在此周期内复用摘要
   # API key 放在 .env 文件的 LLM_API_KEY 中，不要写在这里
 
 # 早报板块（按此顺序渲染），limit 为每个板块最终保留条数

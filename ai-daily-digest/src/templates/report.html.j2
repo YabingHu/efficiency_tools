@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大模型每日早报 · {{ date_str }}</title>
+<script>document.documentElement.classList.add('js')</script>
 <style>
   :root {
     --primary: #5b5bd6;
@@ -88,6 +89,8 @@
   .section-header .sub { display: block; margin-top: 4px; font-size: 13px; color: var(--text-light); }
   .section-total { flex: 0 0 auto; font-size: 12px; color: var(--text-light); }
   .entries { display: grid; gap: 16px; }
+  .js .card.is-extra { display: none; }
+  .js section.is-expanded .card.is-extra { display: block; }
   .card {
     background: var(--surface); border: 1px solid rgba(226,228,237,.9);
     border-radius: 18px; padding: 23px 25px;
@@ -114,6 +117,16 @@
   .stars { font-size: 12px; color: var(--text-light); }
   .discussion-link { color: var(--primary); font-size: 12px; text-decoration: none; }
   .discussion-link:hover { text-decoration: underline; }
+  .section-actions { display: flex; justify-content: center; margin-top: 18px; }
+  .section-toggle {
+    appearance: none; border: 1px solid #d8d9e8; background: rgba(255,255,255,.8);
+    color: var(--primary-dark); border-radius: 999px; padding: 8px 18px;
+    font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .section-toggle:hover { border-color: #b9b7e7; background: var(--surface); }
+  .section-toggle:focus-visible, a:focus-visible {
+    outline: 3px solid rgba(91,91,214,.28); outline-offset: 3px;
+  }
   .empty {
     color: var(--text-light); font-size: 14px; padding: 24px;
     background: rgba(255,255,255,.55); border: 1px dashed #dfe2eb; border-radius: 16px;
@@ -180,12 +193,12 @@
       <span class="section-total">{{ section.entries|length }} 条精选</span>
     </div>
     {% if section.entries %}
-    <div class="entries">
+    <div class="entries" id="entries-{{ section.key }}">
       {% for item in section.entries %}
-      <div class="card">
+      <article class="card{% if loop.index > section.initial_visible %} is-extra{% endif %}">
         <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
         {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
-        {% if item.comment %}<div class="comment">💡 {{ item.comment }}</div>{% endif %}
+        {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
         <div class="footer">
           <span class="badge">{{ item.source }}</span>
           {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
@@ -196,9 +209,19 @@
           {% if item.meta.discussion_url %}<a class="discussion-link" href="{{ item.meta.discussion_url }}" target="_blank" rel="noopener">参与讨论 →</a>{% endif %}
           {% endif %}
         </div>
-      </div>
+      </article>
       {% endfor %}
     </div>
+    {% if section.entries|length > section.initial_visible %}
+    <div class="section-actions">
+      <button class="section-toggle" type="button" data-section-toggle
+              aria-expanded="false" aria-controls="entries-{{ section.key }}"
+              data-expand-label="展开其余 {{ (section.entries|length) - section.initial_visible }} 条"
+              data-collapse-label="收起">
+        展开其余 {{ (section.entries|length) - section.initial_visible }} 条
+      </button>
+    </div>
+    {% endif %}
     {% else %}
       <div class="empty">今日该板块暂无内容（来源不可用或无更新）</div>
     {% endif %}
@@ -210,5 +233,15 @@
     数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News / Lobsters / Stack Exchange
   </footer>
 </main>
+<script>
+  document.querySelectorAll('[data-section-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const section = button.closest('section');
+      const expanded = section.classList.toggle('is-expanded');
+      button.setAttribute('aria-expanded', String(expanded));
+      button.textContent = expanded ? button.dataset.collapseLabel : button.dataset.expandLabel;
+    });
+  });
+</script>
 </body>
 </html>

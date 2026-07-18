@@ -58,3 +58,27 @@ def test_render_limits_single_community_source(cfg):
     assert "HN first" in html
     assert "Lobsters first" in html
     assert "HN second" not in html
+
+
+def test_render_collapses_entries_after_configured_initial_count(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key == "industry"
+    cfg["sections"]["industry"]["limit"] = 6
+    cfg["initial_visible_items"] = 4
+    items = [
+        NewsItem(
+            f"item-{index}", "industry", f"Item {index}",
+            f"https://example.com/{index}", "source", importance=3,
+        )
+        for index in range(6)
+    ]
+
+    path = render(
+        cfg, items, [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    assert html.count('class="card is-extra"') == 2
+    assert "展开其余 2 条" in html
+    assert 'aria-controls="entries-industry"' in html
