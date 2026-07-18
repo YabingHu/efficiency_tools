@@ -67,8 +67,12 @@ def collect(cfg: dict, today) -> list[NewsItem]:
                 text=f"{hit.get('points', 0)} points, "
                      f"{hit.get('num_comments', 0)} comments. 讨论: {hn_url}",
                 score=float(hit.get("points") or 0),
-                meta={"hn_url": hn_url,
-                      "comments": hit.get("num_comments", 0)},
+                meta={
+                    "hn_url": hn_url,
+                    "discussion_url": hn_url,
+                    "points": hit.get("points", 0),
+                    "comments": hit.get("num_comments", 0),
+                },
             ))
     items.sort(key=lambda x: x.score, reverse=True)
     log.info("HN 命中 %d 条", len(items))

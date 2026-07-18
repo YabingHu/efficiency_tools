@@ -112,6 +112,8 @@
   }
   .badge.hot { background: #fef2f2; color: #dc2626; }
   .stars { font-size: 12px; color: var(--text-light); }
+  .discussion-link { color: var(--primary); font-size: 12px; text-decoration: none; }
+  .discussion-link:hover { text-decoration: underline; }
   .empty {
     color: var(--text-light); font-size: 14px; padding: 24px;
     background: rgba(255,255,255,.55); border: 1px dashed #dfe2eb; border-radius: 16px;
@@ -189,7 +191,10 @@
           {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
           {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
           {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
-          {% if item.section == 'community' %}<span class="stars">▲ {{ item.score|int }} · 💬 {{ item.meta.comments }}</span>{% endif %}
+          {% if item.section == 'community' %}
+          <span class="stars">▲ {{ item.meta.points|default(item.score)|int }} · 💬 {{ item.meta.comments }}</span>
+          {% if item.meta.discussion_url %}<a class="discussion-link" href="{{ item.meta.discussion_url }}" target="_blank" rel="noopener">参与讨论 →</a>{% endif %}
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -202,7 +207,7 @@
 
   <footer class="page">
     由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>
-    数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News
+    数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News / Lobsters / Stack Exchange
   </footer>
 </main>
 </body>

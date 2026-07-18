@@ -53,6 +53,12 @@ def validate_config(cfg: dict) -> None:
         if not isinstance(section.get("title"), str) or not section["title"].strip():
             raise ValueError(f"sections.{key}.title 不能为空")
         _positive_int(section.get("limit", 8), f"sections.{key}.limit", maximum=100)
+        if "max_per_source" in section:
+            _positive_int(
+                section["max_per_source"],
+                f"sections.{key}.max_per_source",
+                maximum=100,
+            )
 
     llm = cfg.get("llm")
     if not isinstance(llm, dict):

@@ -1,7 +1,8 @@
 # AI Daily Digest
 
 一个面向 AI/LLM 资讯的每日流水线：并发采集 HuggingFace Papers、arXiv、GitHub
-Trending、RSS 和 Hacker News，通过 OpenAI 兼容接口生成中文摘要，最后输出 HTML 日报。
+Trending、RSS、Hacker News、Lobsters 和 Stack Exchange，通过 OpenAI 兼容接口
+生成中文摘要，最后输出 HTML 日报。
 
 ## 初始化
 

@@ -35,3 +35,26 @@ def test_render_updates_latest_atomically(cfg):
 def test_status_file_is_machine_readable(cfg):
     path = write_status(cfg, {"status": "success", "collected_items": 3})
     assert '"collected_items": 3' in path.read_text(encoding="utf-8")
+
+
+def test_render_limits_single_community_source(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key == "community"
+    cfg["sections"]["community"]["limit"] = 2
+    cfg["sections"]["community"]["max_per_source"] = 1
+    items = [
+        NewsItem("hn-1", "community", "HN first", "https://example.com/1", "HN", score=100),
+        NewsItem("hn-2", "community", "HN second", "https://example.com/2", "HN", score=90),
+        NewsItem(
+            "lob-1", "community", "Lobsters first", "https://example.com/3",
+            "Lobsters", score=10,
+        ),
+    ]
+    path = render(
+        cfg, items, [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+    assert "HN first" in html
+    assert "Lobsters first" in html
+    assert "HN second" not in html

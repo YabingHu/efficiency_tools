@@ -1,7 +1,7 @@
 # LLM 每日早报生成器配置
 timezone: Asia/Shanghai
 output_dir: output
-collection_workers: 5
+collection_workers: 6
 
 http:
   connect_timeout_seconds: 5
@@ -48,8 +48,9 @@ sections:
   community:
     enabled: true
     title: "💬 社区热议"
-    subtitle: "Hacker News 高分讨论"
-    limit: 5
+    subtitle: "Hacker News · Lobsters · GenAI / AI Stack Exchange"
+    limit: 6
+    max_per_source: 2  # 来源充足时单一社区最多占两席，不足时自动补满
 
 sources:
   hf_papers:
@@ -111,3 +112,17 @@ sources:
     min_points: 40
     lookback_hours: 30
     workers: 5
+  community_sources:
+    lookback_hours: 96
+    lobsters:
+      enabled: true
+      url: https://lobste.rs/t/ai.json
+      max_fetch: 25
+      min_score: 5
+      min_comments: 2
+    stackexchange:
+      enabled: true
+      max_fetch_per_site: 20
+      sites:
+        - {site: genai, name: GenAI Stack Exchange}
+        - {site: ai, name: AI Stack Exchange}

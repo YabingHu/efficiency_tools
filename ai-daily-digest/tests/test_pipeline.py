@@ -59,3 +59,18 @@ def test_no_llm_fallback_truncates_long_text_with_ellipsis():
     main.apply_no_llm_fallback([news])
     assert len(news.summary_zh) == 360
     assert news.summary_zh.endswith("…")
+
+
+def test_trim_balances_sources_before_filling_remaining_slots(cfg):
+    cfg["sections"]["community"]["limit"] = 2
+    cfg["sections"]["community"]["max_per_source"] = 1
+    items = [
+        NewsItem("hn-1", "community", "hn-1", "https://example.com/1", "HN", score=100),
+        NewsItem("hn-2", "community", "hn-2", "https://example.com/2", "HN", score=90),
+        NewsItem("hn-3", "community", "hn-3", "https://example.com/5", "HN", score=80),
+        NewsItem("hn-4", "community", "hn-4", "https://example.com/6", "HN", score=70),
+        NewsItem("lob-1", "community", "lob-1", "https://example.com/3", "Lobsters", score=10),
+        NewsItem("se-1", "community", "se-1", "https://example.com/4", "Stack", score=5),
+    ]
+    result = main.trim_items(cfg, items)
+    assert [value.id for value in result] == ["hn-1", "hn-2", "lob-1", "se-1"]

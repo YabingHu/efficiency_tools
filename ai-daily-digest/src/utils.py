@@ -33,3 +33,17 @@ def canonical_url(url: str) -> str:
     ]
     path = parsed.path.rstrip("/") or "/"
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, urlencode(query), ""))
+
+
+def take_with_source_limit(items: list, limit: int, max_per_source: int) -> list:
+    """优先保证来源多样性；来源不足时再用高排名候选补满。"""
+    selected, deferred = [], []
+    source_counts: dict[str, int] = {}
+    for item in items:
+        count = source_counts.get(item.source, 0)
+        if count < max_per_source:
+            selected.append(item)
+            source_counts[item.source] = count + 1
+        else:
+            deferred.append(item)
+    return (selected + deferred)[:limit]

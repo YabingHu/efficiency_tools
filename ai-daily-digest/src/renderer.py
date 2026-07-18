@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import NewsItem
+from .utils import take_with_source_limit
 
 log = logging.getLogger(__name__)
 
@@ -80,11 +81,15 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
             continue
         sec_items = [it for it in items if it.section == key]
         sec_items.sort(key=lambda x: (x.importance, x.score), reverse=True)
+        limit = sec_cfg.get("limit", 8)
+        max_per_source = sec_cfg.get("max_per_source")
+        if max_per_source:
+            sec_items = take_with_source_limit(sec_items, limit, max_per_source)
         sections.append({
             "key": key,
             "title": sec_cfg["title"],
             "subtitle": sec_cfg.get("subtitle", ""),
-            "entries": sec_items[:sec_cfg.get("limit", 8)],
+            "entries": sec_items[:limit],
         })
 
     html = template.render(

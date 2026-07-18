@@ -15,11 +15,18 @@ from pathlib import Path
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
-from .collectors import arxiv_papers, github_trending, hackernews, hf_papers, rss_news
+from .collectors import (
+    arxiv_papers,
+    community_sources,
+    github_trending,
+    hackernews,
+    hf_papers,
+    rss_news,
+)
 from .config import get_api_key, load_config
 from .renderer import check_template, render, write_status
 from .summarizer import Summarizer
-from .utils import canonical_url, safe_http_url
+from .utils import canonical_url, safe_http_url, take_with_source_limit
 
 COLLECTORS = {
     "hf_papers": (hf_papers.collect, {"papers"}),
@@ -27,6 +34,7 @@ COLLECTORS = {
     "github": (github_trending.collect, {"github"}),
     "rss": (rss_news.collect, {"industry", "media"}),
     "hackernews": (hackernews.collect, {"community"}),
+    "community_sources": (community_sources.collect, {"community"}),
 }
 
 
@@ -114,6 +122,11 @@ def trim_items(cfg: dict, items: list) -> list:
         cap = sec_cfg.get("limit", 8) * 2
         if any(item.score for item in section_items):
             section_items.sort(key=lambda item: item.score, reverse=True)
+        max_per_source = sec_cfg.get("max_per_source")
+        if max_per_source:
+            section_items = take_with_source_limit(
+                section_items, cap, max_per_source * 2,
+            )
         trimmed.extend(section_items[:cap])
     return trimmed
 
