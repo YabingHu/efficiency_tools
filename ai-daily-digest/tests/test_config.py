@@ -27,3 +27,11 @@ def test_config_rejects_invalid_cache_retention():
     cfg["llm"]["cache_retention_days"] = 0
     with pytest.raises(ValueError, match="cache_retention_days"):
         validate_config(cfg)
+
+
+def test_config_rejects_unknown_last30days_source():
+    cfg = deepcopy(load_config())
+    cfg.pop("_root", None)
+    cfg["sources"]["last30days"]["english"]["sources"] = ["reddit", "unknown"]
+    with pytest.raises(ValueError, match="不支持的来源"):
+        validate_config(cfg)

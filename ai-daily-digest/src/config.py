@@ -120,6 +120,56 @@ def validate_config(cfg: dict) -> None:
         if not isinstance(hackernews.get("require_content", True), bool):
             raise ValueError("sources.hackernews.require_content 必须是布尔值")
 
+    last30days = sources.get("last30days")
+    if last30days is None:
+        last30days = {"enabled": False}
+    if not isinstance(last30days, dict):
+        raise ValueError("sources.last30days 必须是对象")
+    if not isinstance(last30days.get("enabled", True), bool):
+        raise ValueError("sources.last30days.enabled 必须是布尔值")
+    allowed_sources = {
+        "english": {"reddit", "x"},
+        "chinese": {
+            "weibo", "xiaohongshu", "bilibili", "zhihu", "douyin",
+            "wechat", "baidu", "toutiao",
+        },
+    } if last30days.get("enabled", True) else {}
+    for language, allowed in allowed_sources.items():
+        language_cfg = last30days.get(language, {})
+        path = f"sources.last30days.{language}"
+        if not isinstance(language_cfg, dict):
+            raise ValueError(f"{path} 必须是对象")
+        if not isinstance(language_cfg.get("enabled", True), bool):
+            raise ValueError(f"{path}.enabled 必须是布尔值")
+        topic = language_cfg.get("topic", "")
+        if not isinstance(topic, str) or not topic.strip():
+            raise ValueError(f"{path}.topic 不能为空")
+        selected_sources = language_cfg.get("sources", [])
+        if not isinstance(selected_sources, list) or not selected_sources:
+            raise ValueError(f"{path}.sources 必须是非空数组")
+        unknown = {str(value).lower() for value in selected_sources} - allowed
+        if unknown:
+            raise ValueError(f"{path}.sources 包含不支持的来源: {', '.join(sorted(unknown))}")
+        _positive_int(language_cfg.get("lookback_days", 2), f"{path}.lookback_days", maximum=30)
+        _positive_int(
+            language_cfg.get("timeout_seconds", 150),
+            f"{path}.timeout_seconds",
+            maximum=600,
+        )
+        if language == "english":
+            _positive_int(language_cfg.get("max_results", 16), f"{path}.max_results", maximum=100)
+            _positive_int(
+                language_cfg.get("max_per_source", 8),
+                f"{path}.max_per_source",
+                maximum=50,
+            )
+        else:
+            _positive_int(
+                language_cfg.get("request_timeout_seconds", 20),
+                f"{path}.request_timeout_seconds",
+                maximum=120,
+            )
+
     collection_workers = cfg.get("collection_workers", 5)
     _positive_int(collection_workers, "collection_workers", maximum=20)
 

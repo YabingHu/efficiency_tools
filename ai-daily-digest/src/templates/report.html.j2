@@ -136,8 +136,8 @@
     margin-top: 20px; border-top: 1px solid var(--border); padding-top: 24px;
   }
   @media (min-width: 920px) {
-    .section-github .entries, .section-community .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .section-github .card, .section-community .card { height: 100%; }
+    .section-github .entries, .section-community .entries, .section-community_cn .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .section-github .card, .section-community .card, .section-community_cn .card { height: 100%; }
   }
   @media (max-width: 720px) {
     header { margin: 0 0 34px; padding: 38px 24px; border-radius: 0 0 24px 24px; }
@@ -204,7 +204,7 @@
           {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
           {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
           {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
-          {% if item.section == 'community' %}
+          {% if item.section in ['community', 'community_cn'] %}
           <span class="stars">▲ {{ item.meta.points|default(item.score)|int }} · 💬 {{ item.meta.comments }}</span>
           {% if item.meta.discussion_url %}<a class="discussion-link" href="{{ item.meta.discussion_url }}" target="_blank" rel="noopener">参与讨论 →</a>{% endif %}
           {% endif %}
@@ -230,7 +230,7 @@
 
   <footer class="page">
     由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>
-    数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News / Lobsters / Stack Exchange
+    数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News / Lobsters / Stack Exchange / Reddit / X / 中文公开平台
   </footer>
 </main>
 <script>

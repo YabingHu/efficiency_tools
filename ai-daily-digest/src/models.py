@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class NewsItem:
     id: str            # 全局唯一（用于去重与摘要结果回填）
-    section: str       # papers | arxiv | github | industry | community
+    section: str       # papers | arxiv | github | industry | media | community | community_cn
     title: str
     url: str
     source: str        # 来源名，如 "HF Papers" / "OpenAI Blog"

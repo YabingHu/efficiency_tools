@@ -50,10 +50,16 @@ sections:
     limit: 6
   community:
     enabled: true
-    title: "💬 社区热议"
-    subtitle: "Hacker News · Lobsters · GenAI / AI Stack Exchange"
-    limit: 6
+    title: "🌍 海外社区热议"
+    subtitle: "Reddit · X · Hacker News · Lobsters · GenAI / AI Stack Exchange"
+    limit: 8
     max_per_source: 2  # 来源充足时单一社区最多占两席，不足时自动补满
+  community_cn:
+    enabled: true
+    title: "🇨🇳 中文社区热议"
+    subtitle: "微博 · B站 · 知乎 · 百度 · 今日头条"
+    limit: 6
+    max_per_source: 2
 
 sources:
   hf_papers:
@@ -132,3 +138,20 @@ sources:
       sites:
         - {site: genai, name: GenAI Stack Exchange}
         - {site: ai, name: AI Stack Exchange}
+  last30days:
+    enabled: true
+    english:
+      enabled: true
+      topic: "LLM OR GPT OR Claude OR Gemini OR DeepSeek"
+      sources: [reddit, x]
+      lookback_days: 2
+      timeout_seconds: 150
+      max_results: 16
+      max_per_source: 8
+    chinese:
+      enabled: true
+      topic: "大模型 人工智能 AI 智能体"
+      sources: [weibo, bilibili, zhihu, baidu, toutiao]
+      lookback_days: 2
+      timeout_seconds: 150
+      request_timeout_seconds: 20

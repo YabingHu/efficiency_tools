@@ -19,6 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: ai-daily-digest
@@ -36,6 +37,21 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install --requirement requirements.lock
+
+      - name: Fetch pinned community source engines
+        shell: bash
+        run: |
+          mkdir -p .external-skills/last30days-en .external-skills/last30days-cn
+
+          git -C .external-skills/last30days-en init
+          git -C .external-skills/last30days-en remote add origin https://github.com/mvanhorn/last30days-skill.git
+          git -C .external-skills/last30days-en fetch --depth 1 origin 249c7a4c040558a903d6838dee31012980d4946d
+          git -C .external-skills/last30days-en checkout --detach FETCH_HEAD
+
+          git -C .external-skills/last30days-cn init
+          git -C .external-skills/last30days-cn remote add origin https://github.com/Jesseovo/last30days-skill-cn.git
+          git -C .external-skills/last30days-cn fetch --depth 1 origin a2149277b73140434a5711f007d2dcdbe5a3be86
+          git -C .external-skills/last30days-cn checkout --detach FETCH_HEAD
 
       - name: Find previous history artifact
         id: previous-history
@@ -74,6 +90,10 @@ jobs:
       - name: Generate daily digest
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LAST30DAYS_EN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-en/skills/last30days
+          LAST30DAYS_CN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-cn/skills/last30days
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XQUIK_API_KEY: ${{ secrets.XQUIK_API_KEY }}
         run: python -m src.main
 
       - name: Build 31-day history
