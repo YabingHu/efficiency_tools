@@ -52,6 +52,23 @@ def write_status(cfg: dict, status: dict) -> Path:
     return path
 
 
+def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -> Path:
+    """Render the public history index next to the daily reports."""
+    template = _environment().get_template("archive.html.j2")
+    html = template.render(
+        report_dates=report_dates,
+        retention_days=retention_days,
+        generated_at=datetime.now(
+            ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))
+        ).strftime("%Y-%m-%d %H:%M %Z"),
+    )
+    out_dir = Path(cfg["_root"]) / cfg.get("output_dir", "output")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "archive.html"
+    _atomic_write_text(path, html)
+    return path
+
+
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
            report_date: datetime, *, update_latest: bool = True) -> Path:
     env = _environment()

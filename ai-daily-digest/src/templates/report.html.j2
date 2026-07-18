@@ -49,7 +49,14 @@
     letter-spacing: 2.4px; text-transform: uppercase; opacity: .72;
   }
   header h1 { font-size: 34px; line-height: 1.3; letter-spacing: 1px; }
-  header .date { margin-top: 12px; font-size: 14px; opacity: .82; }
+  .header-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  header .date { font-size: 14px; opacity: .82; }
+  .archive-link {
+    color: #fff; text-decoration: none; font-size: 12px; font-weight: 650;
+    padding: 5px 10px; border: 1px solid rgba(255,255,255,.28); border-radius: 999px;
+    background: rgba(255,255,255,.1);
+  }
+  .archive-link:hover { background: rgba(255,255,255,.18); }
   .overview {
     background: linear-gradient(135deg, #fff 0%, #f8f7ff 100%);
     border: 1px solid #e3e1fb; border-radius: 20px;
@@ -138,7 +145,10 @@
   <div class="header-inner">
     <div class="eyebrow">AI Intelligence Briefing</div>
     <h1>🤖 大模型每日早报</h1>
-    <div class="date">{{ date_str }} · {{ weekday }}</div>
+    <div class="header-meta">
+      <div class="date">{{ date_str }} · {{ weekday }}</div>
+      <a class="archive-link" href="archive.html">查看最近 31 天</a>
+    </div>
   </div>
 </header>
 <main class="container">

@@ -52,7 +52,11 @@ powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Time 08:00
 
 仓库根目录的 `.github/workflows/ai-daily-digest.yml` 会在每天北京时间 08:00
 自动运行，也支持在 Actions 页面手动触发。任务安装锁定依赖、生成日报，并把
-`output/` 发布到 GitHub Pages，因此本机休眠或关机不会影响执行。
+`output/` 发布到 GitHub Pages，因此本机休眠或关机不会影响执行。固定主页始终
+显示最新一期；`archive.html` 提供历史入口，云端会滚动保留最近 31 天的日报。
+
+历史文件保存在保留期为 31 天的 GitHub Actions Artifact 中。每次运行会恢复
+上一份归档、加入当天日报并清理过期文件；仓库本身保持只读，不会自动产生提交。
 
 首次启用需要在 GitHub 仓库中完成两项设置：
 

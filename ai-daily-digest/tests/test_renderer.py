@@ -18,6 +18,7 @@ def test_render_escapes_content_and_does_not_overwrite_latest_for_history(cfg):
     html = path.read_text(encoding="utf-8")
     assert "&lt;script&gt;" in html
     assert "<script>alert(1)</script>" not in html
+    assert 'href="archive.html"' in html
     assert not (path.parent / "latest.html").exists()
 
 

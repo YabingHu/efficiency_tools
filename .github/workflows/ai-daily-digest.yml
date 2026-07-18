@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -36,6 +37,30 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --requirement requirements.lock
 
+      - name: Find previous history artifact
+        id: previous-history
+        uses: actions/github-script@v9
+        with:
+          result-encoding: string
+          script: |
+            const response = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: "digest-history",
+              per_page: 100,
+            });
+            const artifact = response.data.artifacts.find(item => !item.expired);
+            return artifact?.workflow_run?.id?.toString() ?? "";
+
+      - name: Restore previous history
+        if: steps.previous-history.outputs.result != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: digest-history
+          path: ai-daily-digest/history
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.previous-history.outputs.result }}
+
       - name: Check required secret
         shell: bash
         env:
@@ -50,6 +75,17 @@ jobs:
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: python -m src.main
+
+      - name: Build 31-day history
+        run: python -m src.history --retention-days 31
+
+      - name: Save history for the next run
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-history
+          path: ai-daily-digest/history
+          if-no-files-found: error
+          retention-days: 31
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
