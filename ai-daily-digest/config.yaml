@@ -12,7 +12,7 @@ http:
 llm:
   base_url: https://llm-sd31i4a7ip2ecfyq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
   model: deepseek-v4-flash
-  batch_size: 12        # 每次调用摘要的条目数
+  batch_size: 6         # 控制单次输出长度，避免模型截断 JSON
   max_retries: 2
   temperature: 0.3
   timeout_seconds: 60

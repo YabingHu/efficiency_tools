@@ -223,6 +223,12 @@ class Summarizer:
             temp_path.unlink(missing_ok=True)
             raise
 
+    def _save_cache_safely(self) -> None:
+        try:
+            self._save_cache()
+        except OSError as exc:
+            log.warning("摘要缓存写入失败，本次早报仍继续生成: %s", exc)
+
     def _summarize_batch(self, batch: list[NewsItem]) -> dict[str, dict]:
         """摘要一个批次；失败或漏项时递归拆分，只降级真正失败的单条。"""
         if not batch:
@@ -285,6 +291,7 @@ class Summarizer:
                         "cached_at": cached_at,
                     }
                     self._cache_dirty = True
+            self._save_cache_safely()
             log.info("摘要进度 %d/%d", min(i + self.batch_size, len(pending)), len(pending))
 
         for item in items:
@@ -295,10 +302,7 @@ class Summarizer:
                 item.importance = max(1, min(5, int(result.get("importance", 3))))
             except (TypeError, ValueError):
                 item.importance = 3
-        try:
-            self._save_cache()
-        except OSError as exc:
-            log.warning("摘要缓存写入失败，本次早报仍继续生成: %s", exc)
+        self._save_cache_safely()
 
     def make_overview(self, items: list[NewsItem]) -> list[str]:
         top = sorted(items, key=lambda x: (x.importance, x.score), reverse=True)[:15]
