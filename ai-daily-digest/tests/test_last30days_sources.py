@@ -64,6 +64,34 @@ def test_chinese_platform_arrays_map_to_separate_section():
     assert all(item.section == "community_cn" for item in result)
 
 
+def test_english_results_support_youtube_and_bluesky():
+    payload = {
+        "results": [
+            {
+                "candidate_id": "yt-1",
+                "title": "Model release walkthrough",
+                "source": "youtube",
+                "url": "https://www.youtube.com/watch?v=abc",
+                "summary": "A technical walkthrough.",
+                "engagement": {"likes": 400, "comment_count": 20},
+            },
+            {
+                "candidate_id": "bsky-1",
+                "title": "Researcher reaction",
+                "source": "bluesky",
+                "url": "https://bsky.app/profile/example/post/abc",
+                "summary": "A researcher discusses the result.",
+                "engagement": {"likes": 80, "replies": 12},
+            },
+        ]
+    }
+
+    result = last30days_sources._english_items(payload, {"youtube", "bluesky"})
+
+    assert [item.source for item in result] == ["YouTube", "Bluesky"]
+    assert result[0].meta["comments"] == 20
+
+
 def test_collect_runs_enabled_languages_and_preserves_order(monkeypatch, cfg):
     cfg = deepcopy(cfg)
     cfg["sections"]["community_cn"] = {
@@ -97,3 +125,4 @@ def test_child_environment_does_not_expose_llm_key(monkeypatch):
     assert "LLM_API_KEY" not in env
     assert env["XAI_API_KEY"] == "x-key"
     assert env["FROM_BROWSER"] == "off"
+    assert str(last30days_sources.Path(last30days_sources.sys.executable).parent) in env["PATH"]

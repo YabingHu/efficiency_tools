@@ -22,6 +22,7 @@ from .collectors import (
     hackernews,
     hf_papers,
     last30days_sources,
+    official_updates,
     rss_news,
 )
 from .config import get_api_key, load_config
@@ -33,6 +34,7 @@ COLLECTORS = {
     "hf_papers": (hf_papers.collect, {"papers"}),
     "arxiv": (arxiv_papers.collect, {"arxiv"}),
     "github": (github_trending.collect, {"github"}),
+    "official_updates": (official_updates.collect, {"industry"}),
     "rss": (rss_news.collect, {"industry", "media"}),
     "hackernews": (hackernews.collect, {"community"}),
     "community_sources": (community_sources.collect, {"community"}),

@@ -41,8 +41,9 @@ sections:
   industry:
     enabled: true
     title: "🏢 业界动态"
-    subtitle: "OpenAI / Google / DeepMind / HuggingFace 官方博客"
+    subtitle: "OpenAI · Anthropic · Google · Qwen · DeepSeek · Kimi 等官方动态"
     limit: 8
+    max_per_source: 2  # 避免单一厂商更新密集时占满整个板块
   media:
     enabled: true
     title: "📰 行业媒体"
@@ -51,7 +52,7 @@ sections:
   community:
     enabled: true
     title: "🌍 海外社区热议"
-    subtitle: "Reddit · X · Hacker News · Lobsters · GenAI / AI Stack Exchange"
+    subtitle: "Reddit · X · YouTube · Bluesky · Hacker News · Lobsters · Stack Exchange"
     limit: 8
     max_per_source: 2  # 来源充足时单一社区最多占两席，不足时自动补满
   community_cn:
@@ -99,10 +100,6 @@ sources:
       - name: HuggingFace Blog
         url: https://huggingface.co/blog/feed.xml
         section: industry
-      - name: Anthropic Blog
-        # Anthropic 官方无 RSS，用社区维护的镜像（每日自动更新，如失效需换源）
-        url: https://tim-hilde.github.io/anthropic-rss/rss.xml
-        section: industry
       - name: NVIDIA AI Blog
         url: https://blogs.nvidia.com/feed/
         section: industry
@@ -143,7 +140,7 @@ sources:
     english:
       enabled: true
       topic: "LLM OR GPT OR Claude OR Gemini OR DeepSeek"
-      sources: [reddit, x]
+      sources: [reddit, x, youtube, bluesky]
       lookback_days: 2
       timeout_seconds: 150
       max_results: 16
@@ -155,3 +152,29 @@ sources:
       lookback_days: 2
       timeout_seconds: 150
       request_timeout_seconds: 20
+  official_updates:
+    enabled: true
+    lookback_hours: 168
+    max_staleness_hours: 240
+    content_fetch_limit: 4
+    sites:
+      - name: Anthropic Newsroom
+        parser: anthropic
+        url: https://www.anthropic.com/news
+        fetch_content: true
+        max_items: 8
+      - name: DeepSeek Official
+        parser: deepseek
+        url: https://www.deepseek.com/en/transparency/
+        fetch_content: false
+        max_items: 4
+      - name: Qwen Code Blog
+        parser: qwen
+        url: https://qwenlm.github.io/qwen-code-docs/en/blog/
+        fetch_content: true
+        max_items: 6
+      - name: Kimi Research
+        parser: kimi
+        url: https://www.kimi.com/en/blog/
+        fetch_content: true
+        max_items: 6

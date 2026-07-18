@@ -17,7 +17,7 @@ CI 或需要完全复现当前验证环境时，改用 `requirements.lock`。
 在 `.env` 中配置 `LLM_API_KEY`。模型、来源、板块和新鲜度阈值位于
 `config.yaml`。
 
-Reddit、X 和中文社区扩展来源分别由 `last30days-skill` 与
+Reddit、X、YouTube、Bluesky 和中文社区扩展来源分别由 `last30days-skill` 与
 `last30days-skill-cn` 提供。本机已安装时会自动发现
 `~/.codex/skills/last30days-en` 和 `~/.codex/skills/last30days-cn`；也可以用
 `LAST30DAYS_EN_SKILL_DIR`、`LAST30DAYS_CN_SKILL_DIR` 指向 skill 目录。
@@ -26,6 +26,12 @@ Reddit、X 和中文社区扩展来源分别由 `last30days-skill` 与
 X 在云端需要额外凭据，推荐在 `.env`（本地）或 GitHub Actions Secrets（云端）
 配置 `XAI_API_KEY`；也支持 `XQUIK_API_KEY`。两者都未配置时 X 会自动跳过，
 Reddit 和其他社区仍会正常采集。日报的 `LLM_API_KEY` 不会传给第三方采集脚本。
+YouTube 优先使用项目锁定的 `yt-dlp` 采集公开视频信息；若本机或云端 IP 被
+YouTube 机器人验证拦截，可配置 `SCRAPECREATORS_API_KEY` 作为备用通道。
+Bluesky 需配置 `BLUESKY_HANDLE` 与 `BLUESKY_APP_PASSWORD`，未配置时自动跳过。
+
+业界动态中的 Anthropic、Qwen、DeepSeek 和 Kimi 直接读取各自官方发布页面。
+Anthropic 不再依赖社区维护的 RSS 镜像；Qwen 也不使用已经长期停更的旧博客 RSS。
 
 ## 使用
 
@@ -84,6 +90,10 @@ powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Time 08:00
    `GitHub Actions`。
 3. 如需 X 内容，在 `Settings → Secrets and variables → Actions` 新建
    `XAI_API_KEY`（推荐）或 `XQUIK_API_KEY`；未配置时仅跳过 X。
+4. 如需 Bluesky 内容，新建 `BLUESKY_HANDLE` 和 `BLUESKY_APP_PASSWORD`；
+   App Password 不要使用主账号密码。
+5. 如需在云端稳定采集 YouTube，可新建 `SCRAPECREATORS_API_KEY`；不配置时
+   仍会尝试免费的 `yt-dlp` 通道，遇到平台机器人验证则只跳过 YouTube。
 
 云任务会按固定提交下载两个社区采集引擎，不会跟随上游 `main` 分支自动漂移。
 

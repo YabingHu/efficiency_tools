@@ -17,7 +17,13 @@ from ..models import NewsItem
 
 log = logging.getLogger(__name__)
 
-EN_SOURCE_LABELS = {"reddit": "Reddit", "x": "X", "twitter": "X"}
+EN_SOURCE_LABELS = {
+    "reddit": "Reddit",
+    "x": "X",
+    "twitter": "X",
+    "youtube": "YouTube",
+    "bluesky": "Bluesky",
+}
 CN_SOURCE_LABELS = {
     "weibo": "微博",
     "xiaohongshu": "小红书",
@@ -61,6 +67,8 @@ def _child_env() -> dict[str, str]:
     """Keep X credentials available without sharing the digest model key."""
     env = os.environ.copy()
     env.pop("LLM_API_KEY", None)
+    executable_dir = str(Path(sys.executable).resolve().parent)
+    env["PATH"] = os.pathsep.join(filter(None, [executable_dir, env.get("PATH", "")]))
     env.update({
         "FROM_BROWSER": "off",
         "NO_COLOR": "1",
@@ -246,9 +254,11 @@ def _chinese_items(payload: dict, allowed_sources: set[str]) -> list[NewsItem]:
 def _collect_english(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]:
     script = _script_path(cfg, "en")
     if script is None:
-        log.warning("未找到 last30days 英文 skill，跳过 Reddit / X")
+        log.warning("未找到 last30days 英文 skill，跳过英文扩展社区来源")
         return []
-    sources = {str(value).lower() for value in source_cfg.get("sources", ["reddit", "x"])}
+    sources = {str(value).lower() for value in source_cfg.get(
+        "sources", ["reddit", "x", "youtube", "bluesky"]
+    )}
     topic = source_cfg.get("topic", "LLM OR GPT OR Claude OR Gemini OR DeepSeek")
     plan = {
         "intent": "breaking_news",
@@ -277,9 +287,12 @@ def _collect_english(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]
     ], source_cfg.get("timeout_seconds", 150))
     status = payload.get("source_status", {})
     if isinstance(status, dict):
-        x_status = status.get("x") or status.get("twitter")
-        if x_status and "x" in sources:
-            log.info("X 来源状态: %s", x_status)
+        for source in sorted(sources):
+            source_status = status.get(source)
+            if source_status:
+                log.info(
+                    "%s 来源状态: %s", EN_SOURCE_LABELS.get(source, source), source_status,
+                )
     return _english_items(payload, sources)
 
 

@@ -94,6 +94,9 @@ jobs:
           LAST30DAYS_CN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-cn/skills/last30days
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           XQUIK_API_KEY: ${{ secrets.XQUIK_API_KEY }}
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          SCRAPECREATORS_API_KEY: ${{ secrets.SCRAPECREATORS_API_KEY }}
         run: python -m src.main
 
       - name: Build 31-day history

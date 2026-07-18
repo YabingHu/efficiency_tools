@@ -34,3 +34,4 @@ typing-inspection==0.4.2
 typing_extensions==4.16.0
 tzdata==2026.3
 urllib3==2.7.0
+yt-dlp==2026.7.4

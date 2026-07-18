@@ -128,7 +128,7 @@ def validate_config(cfg: dict) -> None:
     if not isinstance(last30days.get("enabled", True), bool):
         raise ValueError("sources.last30days.enabled 必须是布尔值")
     allowed_sources = {
-        "english": {"reddit", "x"},
+        "english": {"reddit", "x", "youtube", "bluesky"},
         "chinese": {
             "weibo", "xiaohongshu", "bilibili", "zhihu", "douyin",
             "wechat", "baidu", "toutiao",
@@ -169,6 +169,40 @@ def validate_config(cfg: dict) -> None:
                 f"{path}.request_timeout_seconds",
                 maximum=120,
             )
+
+    official_updates = sources.get("official_updates", {})
+    if not isinstance(official_updates, dict):
+        raise ValueError("sources.official_updates 必须是对象")
+    if not isinstance(official_updates.get("enabled", True), bool):
+        raise ValueError("sources.official_updates.enabled 必须是布尔值")
+    _positive_int(
+        official_updates.get("lookback_hours", 72),
+        "sources.official_updates.lookback_hours",
+        maximum=720,
+    )
+    _positive_int(
+        official_updates.get("max_staleness_hours", 120),
+        "sources.official_updates.max_staleness_hours",
+        maximum=2160,
+    )
+    _positive_int(
+        official_updates.get("content_fetch_limit", 4),
+        "sources.official_updates.content_fetch_limit",
+        maximum=20,
+    )
+    sites = official_updates.get("sites", [])
+    if not isinstance(sites, list):
+        raise ValueError("sources.official_updates.sites 必须是数组")
+    for index, site in enumerate(sites):
+        path = f"sources.official_updates.sites[{index}]"
+        if not isinstance(site, dict) or not str(site.get("name", "")).strip():
+            raise ValueError(f"{path}.name 不能为空")
+        if site.get("parser") not in {"anthropic", "kimi", "qwen", "deepseek"}:
+            raise ValueError(f"{path}.parser 不受支持")
+        _http_url(site.get("url"), f"{path}.url")
+        if not isinstance(site.get("fetch_content", False), bool):
+            raise ValueError(f"{path}.fetch_content 必须是布尔值")
+        _positive_int(site.get("max_items", 8), f"{path}.max_items", maximum=30)
 
     collection_workers = cfg.get("collection_workers", 5)
     _positive_int(collection_workers, "collection_workers", maximum=20)

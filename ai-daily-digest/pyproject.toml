@@ -16,6 +16,7 @@ dependencies = [
   "pyyaml>=6.0,<7",
   "python-dotenv>=1.0.0,<2",
   "tzdata>=2024.1,<2028",
+  "yt-dlp==2026.7.4",
 ]
 
 [project.optional-dependencies]
