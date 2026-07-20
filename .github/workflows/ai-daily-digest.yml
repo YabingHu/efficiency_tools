@@ -2,7 +2,10 @@ name: AI Daily Digest
 
 on:
   schedule:
-    - cron: "0 8 * * *"
+    # 北京时间 07:20（UTC 23:20）。避开整点和 UTC 零点这两个 GitHub 定时任务
+    # 高峰：原本的 08:00 北京时间正好是 UTC 00:00，实测排队延迟约 2 小时。
+    # 提前 40 分钟触发，留出排队缓冲，让日报在 08:00 前后可用。
+    - cron: "20 7 * * *"
       timezone: Asia/Shanghai
   workflow_dispatch:
 
