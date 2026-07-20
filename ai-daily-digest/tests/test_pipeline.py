@@ -42,7 +42,31 @@ def test_rss_runs_when_only_media_is_enabled(monkeypatch, cfg):
         return [expected]
 
     monkeypatch.setattr(main, "COLLECTORS", {"rss": (fake_collect, {"industry", "media"})})
-    assert main.collect_all(cfg, date(2026, 7, 17)) == [expected]
+    items, _ = main.collect_all(cfg, date(2026, 7, 17))
+    assert items == [expected]
+
+
+def test_collect_all_reports_empty_and_failed_collectors(monkeypatch, cfg):
+    def working(_cfg, _today):
+        return [item("ok")]
+
+    def silent(_cfg, _today):
+        return []
+
+    def broken(_cfg, _today):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(main, "COLLECTORS", {
+        "rss": (working, {"industry"}),
+        "arxiv": (silent, {"industry"}),
+        "github": (broken, {"industry"}),
+    })
+    items, diagnostics = main.collect_all(cfg, date(2026, 7, 17))
+    assert [value.id for value in items] == ["ok"]
+    assert diagnostics["collector_counts"] == {"rss": 1, "arxiv": 0, "github": 0}
+    assert diagnostics["failed_collectors"] == ["github"]
+    # 静默返回 0 条的采集器必须和真正抛异常的一样可见
+    assert diagnostics["empty_collectors"] == ["arxiv", "github"]
 
 
 def test_no_llm_fallback_shows_source_text():

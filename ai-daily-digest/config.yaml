@@ -71,7 +71,9 @@ sources:
     lookback_hours: 36
     max_staleness_hours: 120
     read_timeout_seconds: 15
-    retries: 0  # arXiv 易触发 429；失败时由其他论文源降级兜底
+    # arXiv 对云端 IP 限流激进。少量重试兜住瞬时 429，真正的兜底是 rss.arxiv.org
+    # CDN 通道（见 collectors/arxiv_papers.py），避免整个板块静默变空。
+    retries: 2
     keywords: [llm, large language model, language model, gpt, transformer,
                agent, reasoning, rlhf, instruction, multimodal, diffusion,
                fine-tun, retrieval, rag, benchmark, alignment, distillation,

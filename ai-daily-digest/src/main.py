@@ -62,8 +62,12 @@ def setup_logging(root: Path):
     )
 
 
-def collect_all(cfg: dict, report_date) -> list:
-    """并发执行独立数据源，并按注册顺序稳定合并结果。"""
+def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
+    """并发执行独立数据源，按注册顺序稳定合并结果，并返回每个采集器的产出诊断。
+
+    诊断信息会写进 run-status.json：采集器静默返回 0 条（例如 arXiv 被限流）
+    和「板块本来就没内容」在最终结果里无法区分，只看板块数会让故障烂很久。
+    """
     log = logging.getLogger("main")
     enabled = {
         key for key, section in cfg["sections"].items()
@@ -75,6 +79,7 @@ def collect_all(cfg: dict, report_date) -> list:
         if sections & enabled
     }
     results = {}
+    failed = []
     workers = min(cfg.get("collection_workers", 5), max(1, len(selected)))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="collector") as pool:
         futures = {
@@ -89,11 +94,20 @@ def collect_all(cfg: dict, report_date) -> list:
                 log.info("[%s] 采集到 %d 条", name, len(got))
             except Exception:
                 results[name] = []
+                failed.append(name)
                 log.exception("[%s] 采集器异常，跳过", name)
             finally:
                 log.info("[%s] 采集耗时 %.2fs", name, perf_counter() - started)
 
-    return [item for name in selected for item in results.get(name, [])]
+    empty = sorted(name for name in selected if not results.get(name))
+    if empty:
+        log.warning("以下采集器本次没有产出：%s", "、".join(empty))
+    diagnostics = {
+        "collector_counts": {name: len(results.get(name, [])) for name in selected},
+        "failed_collectors": sorted(failed),
+        "empty_collectors": empty,
+    }
+    return [item for name in selected for item in results.get(name, [])], diagnostics
 
 
 def deduplicate(items: list, enabled_sections: set[str]) -> list:
@@ -183,7 +197,7 @@ def main():
 
     # 1. 抓取（单源失败不影响整体）
     pipeline_started = perf_counter()
-    items = collect_all(cfg, report_date.date())
+    items, diagnostics = collect_all(cfg, report_date.date())
 
     if not items:
         log.error("所有来源均无数据，退出")
@@ -193,6 +207,7 @@ def main():
                 "status": "failed",
                 "report_date": report_date.strftime("%Y-%m-%d"),
                 "reason": "所有来源均无数据",
+                **diagnostics,
                 "duration_seconds": round(perf_counter() - pipeline_started, 2),
             },
         )
@@ -237,6 +252,7 @@ def main():
             "no_llm": args.no_llm,
             "collected_items": len(items),
             "render_candidates": len(deduped),
+            **diagnostics,
             "section_counts": {
                 key: sum(item.section == key for item in deduped)
                 for key in cfg["sections"]

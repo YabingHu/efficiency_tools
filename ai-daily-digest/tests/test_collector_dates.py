@@ -117,3 +117,83 @@ def test_arxiv_query_and_filter_are_anchored_to_report_date(monkeypatch, cfg):
     assert "submittedDate:" in captured["search_query"]
     assert "20260710" in captured["search_query"]
     assert [item.id for item in result] == ["arxiv:2607.01234"]
+
+
+def _rss_entry(announce_type="new", published=None, arxiv_id="2607.15280"):
+    published = published or datetime(2026, 7, 20, 4, tzinfo=UTC)
+    return SimpleNamespace(
+        id=f"oai:arXiv.org:{arxiv_id}v1",
+        link=f"https://arxiv.org/abs/{arxiv_id}",
+        title="LLM agent benchmark",
+        summary=(
+            f"arXiv:{arxiv_id}v1 Announce Type: {announce_type} "
+            "Abstract: A large language model study."
+        ),
+        published_parsed=published.timetuple(),
+        arxiv_announce_type=announce_type,
+    )
+
+
+def test_arxiv_falls_back_to_rss_when_api_fails(monkeypatch, cfg):
+    requested = []
+
+    def fake_get(url, *args, **kwargs):
+        requested.append(url)
+        if url.startswith(arxiv_papers.API):
+            raise RuntimeError("429 Too Many Requests")
+        return Response()
+
+    monkeypatch.setattr(arxiv_papers, "http_get", fake_get)
+    monkeypatch.setattr(
+        arxiv_papers.feedparser,
+        "parse",
+        lambda content: SimpleNamespace(entries=[
+            _rss_entry("new"),
+            _rss_entry("replace", arxiv_id="2607.99999"),
+        ]),
+    )
+    result = arxiv_papers.collect(cfg, date(2026, 7, 20))
+    assert any(url.startswith(arxiv_papers.RSS) for url in requested)
+    # 只保留新提交，排除对已有论文的修订
+    assert [item.id for item in result] == ["arxiv:2607.15280"]
+    # 送模型的正文不应残留 RSS 的 Announce Type 前缀
+    assert result[0].text == "A large language model study."
+    assert result[0].url == "https://arxiv.org/abs/2607.15280"
+
+
+def test_arxiv_rss_fallback_skips_historical_backfill(monkeypatch, cfg):
+    """RSS 只有当期公告；回补历史日期时公告日晚于 as_of，必须过滤为空。"""
+    def fake_get(url, *args, **kwargs):
+        if url.startswith(arxiv_papers.API):
+            raise RuntimeError("429 Too Many Requests")
+        return Response()
+
+    monkeypatch.setattr(arxiv_papers, "http_get", fake_get)
+    monkeypatch.setattr(
+        arxiv_papers.feedparser,
+        "parse",
+        lambda content: SimpleNamespace(entries=[_rss_entry("new")]),
+    )
+    assert arxiv_papers.collect(cfg, date(2026, 7, 10)) == []
+
+
+def test_arxiv_keeps_api_result_without_calling_rss(monkeypatch, cfg):
+    published = datetime(2026, 7, 20, 8, tzinfo=UTC)
+    entry = SimpleNamespace(
+        id="https://arxiv.org/abs/2607.01234v1",
+        title="LLM test paper",
+        summary="language model research",
+        published_parsed=published.timetuple(),
+    )
+
+    def fake_get(url, *args, **kwargs):
+        assert not url.startswith(arxiv_papers.RSS), "API 有结果时不应触发兜底"
+        return Response()
+
+    monkeypatch.setattr(arxiv_papers, "http_get", fake_get)
+    monkeypatch.setattr(
+        arxiv_papers.feedparser, "parse", lambda content: SimpleNamespace(entries=[entry]),
+    )
+    assert [item.id for item in arxiv_papers.collect(cfg, date(2026, 7, 20))] == [
+        "arxiv:2607.01234"
+    ]
