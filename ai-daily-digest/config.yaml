@@ -4,6 +4,12 @@ output_dir: output
 collection_workers: 6
 initial_visible_items: 4  # 每个板块默认显示条数，其余内容可展开
 
+# 跨天去重：同一条资讯连续几天被采集到时，只在第一次展示，窗口期内不再重复。
+# 单次运行内的去重始终生效；此处仅控制跨天窗口。台账存于 history/seen-items.json。
+dedup:
+  enabled: true
+  window_days: 7  # 已展示过的条目在这么多天内不再重复出现
+
 http:
   connect_timeout_seconds: 5
   read_timeout_seconds: 30

@@ -98,6 +98,13 @@ Pipeline in `src/main.py`, executed in five stages: collect → dedup → pre-tr
 - **`src/renderer.py`** — Jinja2 (`src/templates/report.html.j2`) with explicit autoescape, atomic writes,
   current-day-only `latest.html`/`index.html`, and atomic `run-status.json`. `render_archive` (driven by
   `src/history.py`) renders `archive.html.j2` for the rolling 31-day index used by the GitHub Pages deploy.
+- **`src/seen_ledger.py`** — cross-day dedup. `main.deduplicate` only removes repeats *within one run*;
+  `SeenLedger` (persisted to `history/seen-items.json`, which rides along in the `digest-history` artifact)
+  suppresses items that already appeared in the report within the last `dedup.window_days` (default 7).
+  Keyed by both `id:` and canonical `url:`, so the same story dedups across sources and across the
+  HF-Papers/arXiv id overlap. Only items that were *actually rendered* are recorded — a fresh item trimmed
+  out today still gets a chance tomorrow. Gated to current-day runs (like `latest.html`) so backfills never
+  corrupt the live ledger; read/write failures degrade to no-dedup and never abort the run.
 - **`src/config.py`** — merges `config.yaml` + `.env`, validates every section/URL/limit/timeout up front
   (fails fast on config that would otherwise silently drop data or write outside the project), and injects
   the project root as `cfg["_root"]`.
@@ -125,8 +132,8 @@ Pipeline in `src/main.py`, executed in five stages: collect → dedup → pre-tr
   skipped for historical reports.
 - arXiv/RSS/official_updates may anchor a short lookback window to the newest entry at or before the report
   date, but sources older than their configured `max_staleness_hours` are rejected outright.
-- Only a current-day report updates `latest.html`/`index.html`; backfills (`--date` in the past) never touch
-  them.
+- Only a current-day report updates `latest.html`/`index.html` *and* the cross-day dedup ledger; backfills
+  (`--date` in the past) never touch either. `main` computes this once as `is_current`.
 - Timezone comes from `config.yaml` (`Asia/Shanghai`) via `zoneinfo` — don't use naive `datetime.now()` for
   report dating.
 - HN self-posts use the post body directly; high-point external links go through `content_extractor` after

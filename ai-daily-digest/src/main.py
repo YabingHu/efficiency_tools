@@ -26,7 +26,8 @@ from .collectors import (
     rss_news,
 )
 from .config import get_api_key, load_config
-from .renderer import check_template, render, write_status
+from .renderer import check_template, render, selected_items, write_status
+from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
 from .utils import canonical_url, safe_http_url, take_with_source_limit
 
@@ -193,6 +194,8 @@ def main():
             parser.error(f"--date 必须是有效的 YYYY-MM-DD: {exc}")
     else:
         report_date = datetime.now(tz)
+    # 跨天去重与 latest.html 一样只对当天报告生效：历史回补不得污染实时台账。
+    is_current = report_date.date() == datetime.now(tz).date()
     log.info("===== 开始生成 %s 早报 =====", report_date.strftime("%Y-%m-%d"))
 
     # 1. 抓取（单源失败不影响整体）
@@ -221,6 +224,18 @@ def main():
     deduped = deduplicate(items, enabled_sections)
     log.info("去重后共 %d 条（原 %d 条）", len(deduped), len(items))
 
+    # 2.5 跨天去重：滤掉近一周已在早报中展示过的条目（仅当天报告）
+    dedup_cfg = cfg.get("dedup", {})
+    ledger = None
+    if is_current and dedup_cfg.get("enabled", True):
+        ledger = SeenLedger(
+            Path(cfg["_root"]) / "history" / "seen-items.json",
+            dedup_cfg.get("window_days", 7),
+        )
+        before = len(deduped)
+        deduped = ledger.filter_unseen(deduped, report_date.date())
+        log.info("跨天去重后 %d 条（原 %d 条）", len(deduped), before)
+
     # 3. 摘要前预裁剪：每板块最多保留 limit*2 条，控制 token 消耗
     #    （有热度分的按分数取头部；arXiv 等无分数的保持采集顺序=时间倒序）
     deduped = trim_items(cfg, deduped)
@@ -237,10 +252,16 @@ def main():
         overview = summarizer.make_overview(deduped)
 
     # 5. 渲染输出
-    update_latest = report_date.date() == datetime.now(tz).date()
     out_path = render(
-        cfg, deduped, overview, report_date, update_latest=update_latest,
+        cfg, deduped, overview, report_date, update_latest=is_current,
     )
+
+    # 6. 把本期真正展示的条目登记进跨天去重台账，供后续几天抑制重复
+    if ledger is not None:
+        ledger.record(selected_items(cfg, deduped), report_date.date())
+        ledger.prune(report_date.date())
+        ledger.save_safely()
+
     duration = round(perf_counter() - pipeline_started, 2)
     write_status(
         cfg,
@@ -248,7 +269,7 @@ def main():
             "status": "success",
             "report_date": report_date.strftime("%Y-%m-%d"),
             "output": str(out_path),
-            "latest_updated": update_latest,
+            "latest_updated": is_current,
             "no_llm": args.no_llm,
             "collected_items": len(items),
             "render_candidates": len(deduped),

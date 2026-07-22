@@ -70,6 +70,27 @@ def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -
     return path
 
 
+def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
+    """一个板块最终展示的条目：按 (importance, score) 排序后限流截断。"""
+    sec_items = sorted(items, key=lambda x: (x.importance, x.score), reverse=True)
+    limit = sec_cfg.get("limit", 8)
+    max_per_source = sec_cfg.get("max_per_source")
+    if max_per_source:
+        sec_items = take_with_source_limit(sec_items, limit, max_per_source)
+    return sec_items[:limit]
+
+
+def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
+    """跨所有启用板块，返回会真正出现在早报里的条目（与 render 选择逻辑一致）。"""
+    selected = []
+    for key, sec_cfg in cfg["sections"].items():
+        if not sec_cfg.get("enabled", True):
+            continue
+        section_items = [it for it in items if it.section == key]
+        selected.extend(_section_entries(cfg, sec_cfg, section_items))
+    return selected
+
+
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
            report_date: datetime, *, update_latest: bool = True) -> Path:
     env = _environment()
@@ -80,16 +101,12 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
         if not sec_cfg.get("enabled", True):
             continue
         sec_items = [it for it in items if it.section == key]
-        sec_items.sort(key=lambda x: (x.importance, x.score), reverse=True)
         limit = sec_cfg.get("limit", 8)
-        max_per_source = sec_cfg.get("max_per_source")
-        if max_per_source:
-            sec_items = take_with_source_limit(sec_items, limit, max_per_source)
         sections.append({
             "key": key,
             "title": sec_cfg["title"],
             "subtitle": sec_cfg.get("subtitle", ""),
-            "entries": sec_items[:limit],
+            "entries": _section_entries(cfg, sec_cfg, sec_items),
             "initial_visible": min(cfg.get("initial_visible_items", 4), limit),
         })
 

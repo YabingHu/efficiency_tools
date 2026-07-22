@@ -48,6 +48,13 @@ def validate_config(cfg: dict) -> None:
         maximum=20,
     )
 
+    dedup = cfg.get("dedup", {})
+    if not isinstance(dedup, dict):
+        raise ValueError("dedup 必须是对象")
+    if not isinstance(dedup.get("enabled", True), bool):
+        raise ValueError("dedup.enabled 必须是布尔值")
+    _positive_int(dedup.get("window_days", 7), "dedup.window_days", maximum=90)
+
     sections = cfg.get("sections")
     if not isinstance(sections, dict) or not sections:
         raise ValueError("sections 必须是非空对象")
