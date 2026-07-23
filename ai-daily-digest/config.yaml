@@ -44,6 +44,11 @@ sections:
     title: "🧪 大模型测评"
     subtitle: "Benchmark · 评测集 · Leaderboard · LLM-as-a-judge"
     limit: 6
+  agent:
+    enabled: true
+    title: "🤖 智能体"
+    subtitle: "Agent · 多智能体 · 工具调用 · 规划编排"
+    limit: 6
   github:
     enabled: true
     title: "🔥 GitHub 热榜"
@@ -96,6 +101,17 @@ paper_topics:
       - can llms
       - do llms
       - how well
+  # agent 在 eval 之后：既是 benchmark 又是 agent 的论文（"A Benchmark for LLM Agents"）
+  # 归入 eval，因为其主要贡献是评测。"agent" 子串已覆盖 multi-agent / llm agent / agentic。
+  - section: agent
+    keywords:
+      - agent
+      - agentic
+      - tool use
+      - tool-use
+      - tool calling
+      - tool-calling
+      - orchestration
 
 sources:
   hf_papers:
