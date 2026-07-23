@@ -39,6 +39,11 @@ sections:
     title: "🔬 arXiv 新论文"
     subtitle: "cs.CL / cs.AI / cs.LG 最新提交"
     limit: 6
+  eval:
+    enabled: true
+    title: "🧪 大模型测评"
+    subtitle: "Benchmark · 评测集 · Leaderboard · LLM-as-a-judge"
+    limit: 6
   github:
     enabled: true
     title: "🔥 GitHub 热榜"
@@ -67,6 +72,30 @@ sections:
     subtitle: "微博 · B站 · 知乎 · 百度 · 今日头条"
     limit: 6
     max_per_source: 2
+
+# 论文专题分流：标题命中关键词的 arXiv 论文归入专属板块（section 需对应 sections key）。
+# 关键词只匹配标题（摘要里 benchmark/evaluation 太泛滥，匹配摘要会误判半数论文）。
+# 采集端会自动把这里的关键词并入 arXiv 抓取过滤，无需重复写进 sources.arxiv.keywords。
+# 按顺序匹配，首个命中的专题胜出。加新主题只需在此追加一段 + 在 sections 里加对应板块。
+paper_topics:
+  - section: eval
+    keywords:
+      - benchmark
+      - benchmarking
+      - leaderboard
+      - evaluation
+      - evaluating
+      - evaluate
+      - assessing
+      - llm-as-a-judge
+      - chatbot arena
+      - mmlu
+      - gsm8k
+      - big-bench
+      - bigbench
+      - can llms
+      - do llms
+      - how well
 
 sources:
   hf_papers:

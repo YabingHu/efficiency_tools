@@ -73,6 +73,21 @@ def validate_config(cfg: dict) -> None:
                 maximum=100,
             )
 
+    paper_topics = cfg.get("paper_topics", [])
+    if not isinstance(paper_topics, list):
+        raise ValueError("paper_topics 必须是数组")
+    for index, rule in enumerate(paper_topics):
+        path = f"paper_topics[{index}]"
+        if not isinstance(rule, dict):
+            raise ValueError(f"{path} 必须是对象")
+        if rule.get("section") not in sections:
+            raise ValueError(f"{path}.section 引用了不存在的板块: {rule.get('section')}")
+        keywords = rule.get("keywords")
+        if not isinstance(keywords, list) or not keywords:
+            raise ValueError(f"{path}.keywords 必须是非空数组")
+        if not all(isinstance(keyword, str) and keyword.strip() for keyword in keywords):
+            raise ValueError(f"{path}.keywords 只能包含非空字符串")
+
     llm = cfg.get("llm")
     if not isinstance(llm, dict):
         raise ValueError("llm 必须是对象")

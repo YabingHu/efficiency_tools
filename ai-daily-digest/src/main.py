@@ -29,6 +29,7 @@ from .config import get_api_key, load_config
 from .renderer import check_template, render, selected_items, write_status
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
+from .topics import paper_topic_sections, route_paper_topics
 from .utils import canonical_url, safe_http_url, take_with_source_limit
 
 COLLECTORS = {
@@ -74,10 +75,12 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
         key for key, section in cfg["sections"].items()
         if section.get("enabled", True)
     }
+    # arXiv 采集器额外供给论文专题板，所以只启用专题板（不启用通用 arxiv 板）时它仍需运行。
+    topic_sections = paper_topic_sections(cfg)
     selected = {
         name: collect
         for name, (collect, sections) in COLLECTORS.items()
-        if sections & enabled
+        if ((sections | topic_sections) if name == "arxiv" else sections) & enabled
     }
     results = {}
     failed = []
@@ -215,6 +218,9 @@ def main():
             },
         )
         sys.exit(1)
+
+    # 1.5 论文专题分流：命中主题关键词的 arXiv 论文改归专属板（如「大模型测评」）
+    route_paper_topics(cfg, items)
 
     # 2. 跨板块去重（HF Papers 与 arXiv 共享 arxiv:<id>，优先保留 papers 板块）
     enabled_sections = {

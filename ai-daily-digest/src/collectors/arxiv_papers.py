@@ -7,6 +7,7 @@ import feedparser
 
 from ..http_client import get as http_get
 from ..models import NewsItem
+from ..topics import merge_collection_keywords
 from ..utils import report_end_utc
 
 log = logging.getLogger(__name__)
@@ -165,7 +166,8 @@ def _collect_from_rss(
 
 def collect(cfg: dict, today) -> list[NewsItem]:
     src_cfg = cfg["sources"]["arxiv"]
-    keywords = [k.lower() for k in src_cfg.get("keywords", [])]
+    # 采集端放宽到全局关键词 ∪ 专题关键词，专题分流在采集后由 topics.route 完成。
+    keywords = merge_collection_keywords(src_cfg.get("keywords", []), cfg)
     as_of = report_end_utc(today, cfg.get("timezone", "Asia/Shanghai"))
 
     items = _collect_from_api(cfg, src_cfg, as_of, keywords)

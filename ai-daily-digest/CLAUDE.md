@@ -63,7 +63,8 @@ file to force full resummarization.
 
 ## Architecture
 
-Pipeline in `src/main.py`, executed in five stages: collect → dedup → pre-trim → LLM summarize → render.
+Pipeline in `src/main.py`: collect → **route paper topics** → within-run dedup → **cross-day dedup** →
+pre-trim → LLM summarize → render → record ledger.
 
 - **`src/models.py`** — `NewsItem` dataclass is the single data contract flowing through every stage. `id`
   must be globally unique: it drives cross-section dedup and is how LLM batch results are matched back to
@@ -98,6 +99,16 @@ Pipeline in `src/main.py`, executed in five stages: collect → dedup → pre-tr
 - **`src/renderer.py`** — Jinja2 (`src/templates/report.html.j2`) with explicit autoescape, atomic writes,
   current-day-only `latest.html`/`index.html`, and atomic `run-status.json`. `render_archive` (driven by
   `src/history.py`) renders `archive.html.j2` for the rolling 31-day index used by the GitHub Pages deploy.
+- **`src/topics.py`** — config-driven paper-topic routing. `config.yaml`'s `paper_topics` maps title
+  keywords to a dedicated section (e.g. the `eval` / 大模型测评 board); `route_paper_topics` reassigns any
+  `arxiv`-section paper whose **title** matches into that board (first rule wins). Matching is title-only on
+  purpose — abstracts mention "benchmark"/"evaluation" so ubiquitously that abstract matching mislabels ~half
+  the firehose. Routing touches only the `arxiv` pool, never HF Papers (`papers`), so curated highlights stay
+  put; since a paper is a single `NewsItem` with one `section`, it *moves* into the topic board rather than
+  duplicating. The arXiv collector widens its collection filter to `global ∪ topic` keywords
+  (`merge_collection_keywords`) so topic papers actually enter the pool, and the arxiv collector runs whenever
+  `arxiv` *or* any enabled topic section needs it. Add a topic = one `paper_topics` entry + one `sections`
+  entry, no code.
 - **`src/seen_ledger.py`** — cross-day dedup. `main.deduplicate` only removes repeats *within one run*;
   `SeenLedger` (persisted to `history/seen-items.json`, which rides along in the `digest-history` artifact)
   suppresses items that already appeared in the report within the last `dedup.window_days` (default 7).
