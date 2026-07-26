@@ -15,6 +15,7 @@ from .utils import take_with_source_limit
 log = logging.getLogger(__name__)
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+PAPER_BASE_SECTIONS = ("papers", "arxiv")
 
 
 def _environment() -> Environment:
@@ -80,6 +81,31 @@ def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[Ne
     return sec_items[:limit]
 
 
+def _paper_section_keys(cfg: dict) -> list[str]:
+    """Return enabled paper-related sections in display order."""
+    topic_keys = [
+        rule.get("section")
+        for rule in cfg.get("paper_topics", []) or []
+        if rule.get("section")
+    ]
+    paper_keys = set(PAPER_BASE_SECTIONS) | set(topic_keys)
+    return [
+        key for key, sec_cfg in cfg["sections"].items()
+        if key in paper_keys and sec_cfg.get("enabled", True)
+    ]
+
+
+def _render_section(cfg: dict, key: str, sec_cfg: dict, items: list[NewsItem]) -> dict:
+    limit = sec_cfg.get("limit", 8)
+    return {
+        "key": key,
+        "title": sec_cfg["title"],
+        "subtitle": sec_cfg.get("subtitle", ""),
+        "entries": _section_entries(cfg, sec_cfg, [it for it in items if it.section == key]),
+        "initial_visible": min(cfg.get("initial_visible_items", 4), limit),
+    }
+
+
 def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
     """跨所有启用板块，返回会真正出现在早报里的条目（与 render 选择逻辑一致）。"""
     selected = []
@@ -96,19 +122,28 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
     env = _environment()
     template = env.get_template("report.html.j2")
 
+    paper_keys = _paper_section_keys(cfg)
+    paper_key_set = set(paper_keys)
     sections = []
     for key, sec_cfg in cfg["sections"].items():
         if not sec_cfg.get("enabled", True):
             continue
-        sec_items = [it for it in items if it.section == key]
-        limit = sec_cfg.get("limit", 8)
-        sections.append({
-            "key": key,
-            "title": sec_cfg["title"],
-            "subtitle": sec_cfg.get("subtitle", ""),
-            "entries": _section_entries(cfg, sec_cfg, sec_items),
-            "initial_visible": min(cfg.get("initial_visible_items", 4), limit),
-        })
+        if key in paper_key_set:
+            if key == paper_keys[0]:
+                topics = [
+                    _render_section(cfg, paper_key, cfg["sections"][paper_key], items)
+                    for paper_key in paper_keys
+                ]
+                topics = [topic for topic in topics if topic["entries"]]
+                sections.append({
+                    "key": "papers-group",
+                    "title": "📚 论文动态",
+                    "subtitle": "精选论文、arXiv 新稿与专题论文",
+                    "entries": [entry for topic in topics for entry in topic["entries"]],
+                    "topics": topics,
+                })
+            continue
+        sections.append(_render_section(cfg, key, sec_cfg, items))
 
     html = template.render(
         date_str=report_date.strftime("%Y-%m-%d"),

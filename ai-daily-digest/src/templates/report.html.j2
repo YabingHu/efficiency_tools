@@ -66,7 +66,7 @@
   .overview h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 12px; }
   .overview li { margin-left: 20px; margin-bottom: 8px; font-size: 15px; color: var(--text-soft); }
   .section-nav {
-    display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 16px;
+    display: flex; flex-wrap: wrap; gap: 10px; overflow-x: visible; padding: 2px 2px 0;
     margin-bottom: 38px; scrollbar-width: none;
   }
   .section-nav::-webkit-scrollbar { display: none; }
@@ -79,6 +79,31 @@
   }
   .section-nav a:hover { color: var(--primary); border-color: #c9c7ef; transform: translateY(-1px); }
   .section-nav .count { color: var(--text-light); font-size: 11px; }
+  .paper-topic-tabs {
+    display: flex; flex-wrap: wrap; gap: 10px; margin: -4px 0 18px;
+  }
+  .paper-topic-tab {
+    appearance: none; display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); border-radius: 999px; padding: 8px 13px;
+    background: var(--surface); color: var(--text-soft); cursor: pointer;
+    font: inherit; font-size: 13px; line-height: 1.2;
+    box-shadow: 0 4px 14px rgba(37,43,67,.035);
+    transition: color .2s, border-color .2s, background .2s, transform .2s;
+  }
+  .paper-topic-tab:hover { color: var(--primary); border-color: #c9c7ef; transform: translateY(-1px); }
+  .paper-topic-tab.is-active {
+    color: var(--primary-dark); border-color: #c9c7ef; background: var(--primary-light);
+  }
+  .paper-topic-tab .count { color: var(--text-light); font-size: 11px; }
+  .paper-topic-panel { margin-top: 4px; }
+  .js .paper-topic-panel:not(.is-active) { display: none; }
+  .paper-topic-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; margin-bottom: 14px;
+  }
+  .paper-topic-meta .sub { font-size: 13px; color: var(--text-light); }
+  .paper-topic-meta .section-total { font-size: 12px; color: var(--text-light); }
+  .js .paper-topic-panel.is-expanded .card.is-extra { display: block; }
   section { margin-bottom: 64px; scroll-margin-top: 28px; }
   .section-header {
     display: flex; align-items: flex-end; justify-content: space-between;
@@ -124,7 +149,7 @@
     font: inherit; font-size: 13px; cursor: pointer;
   }
   .section-toggle:hover { border-color: #b9b7e7; background: var(--surface); }
-  .section-toggle:focus-visible, a:focus-visible {
+  .section-toggle:focus-visible, .paper-topic-tab:focus-visible, a:focus-visible {
     outline: 3px solid rgba(91,91,214,.28); outline-offset: 3px;
   }
   .empty {
@@ -144,11 +169,17 @@
     header h1 { font-size: 28px; }
     .container { padding: 0 17px 56px; }
     .overview { padding: 22px 20px; border-radius: 16px; }
-    .section-nav { margin-bottom: 28px; }
+    .section-nav {
+      flex-wrap: nowrap; overflow-x: auto; padding-bottom: 16px;
+      margin-bottom: 28px;
+    }
     section { margin-bottom: 50px; }
     .section-header { align-items: flex-start; margin-bottom: 16px; }
     .section-header h2 { font-size: 20px; }
     .section-total { padding-top: 5px; }
+    .paper-topic-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+    .paper-topic-tabs::-webkit-scrollbar { display: none; }
+    .paper-topic-meta { align-items: flex-start; }
     .card { padding: 19px 18px; border-radius: 15px; }
     .card .title { font-size: 16px; }
     .card .summary { font-size: 14px; line-height: 1.76; }
@@ -156,6 +187,23 @@
 </style>
 </head>
 <body>
+{% macro entry_card(item, extra=false) -%}
+<article class="card{% if extra %} is-extra{% endif %}">
+  <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
+  {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
+  {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
+  <div class="footer">
+    <span class="badge">{{ item.source }}</span>
+    {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
+    {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
+    {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
+    {% if item.section in ['community', 'community_cn'] %}
+    <span class="stars">▲ {{ item.meta.points|default(item.score)|int }} · 💬 {{ item.meta.comments }}</span>
+    {% if item.meta.discussion_url %}<a class="discussion-link" href="{{ item.meta.discussion_url }}" target="_blank" rel="noopener">参与讨论 →</a>{% endif %}
+    {% endif %}
+  </div>
+</article>
+{%- endmacro %}
 <header>
   <div class="header-inner">
     <div class="eyebrow">AI Intelligence Briefing</div>
@@ -192,24 +240,50 @@
       </div>
       <span class="section-total">{{ section.entries|length }} 条精选</span>
     </div>
+    {% if section.topics %}
+    <div class="paper-topic-tabs" role="tablist" aria-label="论文专题">
+      {% for topic in section.topics %}
+      <button id="tab-{{ topic.key }}" class="paper-topic-tab{% if loop.first %} is-active{% endif %}"
+              type="button" role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}"
+              aria-controls="paper-topic-{{ topic.key }}" data-paper-topic-tab
+              data-target="paper-topic-{{ topic.key }}">
+        {{ topic.title }} <span class="count">{{ topic.entries|length }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    {% for topic in section.topics %}
+    <div id="paper-topic-{{ topic.key }}" class="paper-topic-panel{% if loop.first %} is-active{% endif %}"
+         role="tabpanel" aria-labelledby="tab-{{ topic.key }}">
+      <div class="paper-topic-meta">
+        <span class="sub">{{ topic.subtitle }}</span>
+        <span class="section-total">{{ topic.entries|length }} 条精选</span>
+      </div>
+      {% if topic.entries %}
+      <div class="entries" id="entries-{{ topic.key }}">
+        {% for item in topic.entries %}
+        {{ entry_card(item, loop.index > topic.initial_visible) }}
+        {% endfor %}
+      </div>
+      {% if topic.entries|length > topic.initial_visible %}
+      <div class="section-actions">
+        <button class="section-toggle" type="button" data-paper-topic-toggle
+                aria-expanded="false" aria-controls="entries-{{ topic.key }}"
+                data-expand-label="展开其余 {{ (topic.entries|length) - topic.initial_visible }} 条"
+                data-collapse-label="收起">
+          展开其余 {{ (topic.entries|length) - topic.initial_visible }} 条
+        </button>
+      </div>
+      {% endif %}
+      {% else %}
+        <div class="empty">今日该专题暂无内容（来源不可用或无更新）</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
     {% if section.entries %}
     <div class="entries" id="entries-{{ section.key }}">
       {% for item in section.entries %}
-      <article class="card{% if loop.index > section.initial_visible %} is-extra{% endif %}">
-        <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
-        {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
-        {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
-        <div class="footer">
-          <span class="badge">{{ item.source }}</span>
-          {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
-          {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
-          {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
-          {% if item.section in ['community', 'community_cn'] %}
-          <span class="stars">▲ {{ item.meta.points|default(item.score)|int }} · 💬 {{ item.meta.comments }}</span>
-          {% if item.meta.discussion_url %}<a class="discussion-link" href="{{ item.meta.discussion_url }}" target="_blank" rel="noopener">参与讨论 →</a>{% endif %}
-          {% endif %}
-        </div>
-      </article>
+      {{ entry_card(item, loop.index > section.initial_visible) }}
       {% endfor %}
     </div>
     {% if section.entries|length > section.initial_visible %}
@@ -225,6 +299,7 @@
     {% else %}
       <div class="empty">今日该板块暂无内容（来源不可用或无更新）</div>
     {% endif %}
+    {% endif %}
   </section>
   {% endfor %}
 
@@ -238,6 +313,27 @@
     button.addEventListener('click', () => {
       const section = button.closest('section');
       const expanded = section.classList.toggle('is-expanded');
+      button.setAttribute('aria-expanded', String(expanded));
+      button.textContent = expanded ? button.dataset.collapseLabel : button.dataset.expandLabel;
+    });
+  });
+  document.querySelectorAll('[data-paper-topic-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const section = tab.closest('section');
+      section.querySelectorAll('[data-paper-topic-tab]').forEach((candidate) => {
+        const active = candidate === tab;
+        candidate.classList.toggle('is-active', active);
+        candidate.setAttribute('aria-selected', String(active));
+      });
+      section.querySelectorAll('.paper-topic-panel').forEach((panel) => {
+        panel.classList.toggle('is-active', panel.id === tab.dataset.target);
+      });
+    });
+  });
+  document.querySelectorAll('[data-paper-topic-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const panel = button.closest('.paper-topic-panel');
+      const expanded = panel.classList.toggle('is-expanded');
       button.setAttribute('aria-expanded', String(expanded));
       button.textContent = expanded ? button.dataset.collapseLabel : button.dataset.expandLabel;
     });

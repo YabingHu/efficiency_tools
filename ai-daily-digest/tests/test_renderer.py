@@ -82,3 +82,61 @@ def test_render_collapses_entries_after_configured_initial_count(cfg):
     assert html.count('class="card is-extra"') == 2
     assert "展开其余 2 条" in html
     assert 'aria-controls="entries-industry"' in html
+
+
+def test_section_nav_wraps_on_desktop_and_scrolls_on_mobile(cfg):
+    path = render(
+        cfg, [], [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    assert ".section-nav {\n    display: flex; flex-wrap: wrap;" in html
+    assert "flex-wrap: nowrap; overflow-x: auto; padding-bottom: 16px;" in html
+
+
+def test_paper_sections_render_as_one_switchable_group(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key in {"papers", "arxiv", "eval", "github"}
+    items = [
+        NewsItem("paper-1", "papers", "HF paper", "https://example.com/paper", "HF", score=20),
+        NewsItem("arxiv-1", "arxiv", "arXiv paper", "https://example.com/arxiv", "arXiv"),
+        NewsItem("eval-1", "eval", "Eval paper", "https://example.com/eval", "arXiv"),
+    ]
+
+    path = render(
+        cfg, items, [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    nav_html = html.split('<nav class="section-nav" aria-label="日报板块">', 1)[1].split("</nav>", 1)[0]
+    assert 'href="#section-papers-group">📚 论文动态 <span class="count">3</span></a>' in nav_html
+    assert 'href="#section-papers"' not in nav_html
+    assert 'href="#section-arxiv"' not in nav_html
+    assert 'href="#section-eval"' not in nav_html
+    assert 'data-paper-topic-tab' in html
+    assert 'id="paper-topic-papers"' in html
+    assert 'id="paper-topic-arxiv"' in html
+    assert 'id="paper-topic-eval"' in html
+
+
+def test_empty_paper_topics_are_hidden_from_switcher(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key in {"papers", "arxiv", "eval", "agent", "github"}
+    items = [
+        NewsItem("arxiv-1", "arxiv", "arXiv paper", "https://example.com/arxiv", "arXiv"),
+    ]
+
+    path = render(
+        cfg, items, [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    nav_html = html.split('<nav class="section-nav" aria-label="日报板块">', 1)[1].split("</nav>", 1)[0]
+    assert 'href="#section-papers-group">📚 论文动态 <span class="count">1</span></a>' in nav_html
+    assert 'id="paper-topic-arxiv"' in html
+    assert 'id="paper-topic-papers"' not in html
+    assert 'id="paper-topic-eval"' not in html
+    assert 'id="paper-topic-agent"' not in html

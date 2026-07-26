@@ -1,6 +1,11 @@
 name: AI Daily Digest
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ai-daily-digest.yml"
+      - "ai-daily-digest/**"
   schedule:
     # 北京时间 07:20（UTC 23:20）。避开整点和 UTC 零点这两个 GitHub 定时任务
     # 高峰：原本的 08:00 北京时间正好是 UTC 00:00，实测排队延迟约 2 小时。
