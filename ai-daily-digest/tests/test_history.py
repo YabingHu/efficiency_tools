@@ -1,9 +1,10 @@
+import json
 from datetime import date
 from pathlib import Path
 
 import pytest
 
-from src.history import sync_history
+from src.history import _latest_report_date, sync_history
 
 
 def test_sync_history_keeps_31_days_and_builds_archive(cfg):
@@ -39,3 +40,15 @@ def test_sync_history_requires_generated_report(cfg):
 def test_sync_history_rejects_invalid_retention(cfg):
     with pytest.raises(ValueError, match="at least 1"):
         sync_history(cfg, date(2026, 7, 18), retention_days=0)
+
+
+def test_latest_report_date_uses_generated_run_status(cfg):
+    root = Path(cfg["_root"])
+    output_dir = root / "output"
+    output_dir.mkdir()
+    (output_dir / "run-status.json").write_text(
+        json.dumps({"status": "success", "report_date": "2026-07-27"}),
+        encoding="utf-8",
+    )
+
+    assert _latest_report_date(cfg) == date(2026, 7, 27)

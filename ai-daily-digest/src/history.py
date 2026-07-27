@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import shutil
 from datetime import date, datetime, timedelta
@@ -21,6 +22,19 @@ def _report_date(path: Path) -> date | None:
         return date.fromisoformat(path.stem)
     except ValueError:
         return None
+
+
+def _latest_report_date(cfg: dict) -> date:
+    """Prefer the just-generated run status over wall-clock time."""
+    status_path = Path(cfg["_root"]) / cfg.get("output_dir", "output") / "run-status.json"
+    if status_path.is_file():
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            if status.get("status") == "success" and status.get("report_date"):
+                return date.fromisoformat(status["report_date"])
+        except (OSError, ValueError, TypeError) as exc:
+            log.warning("读取 run-status.json 失败，回退到配置时区当天: %s", exc)
+    return datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
 
 
 def sync_history(
@@ -76,7 +90,7 @@ def main() -> None:
     if args.date:
         report_date = date.fromisoformat(args.date)
     else:
-        report_date = datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
+        report_date = _latest_report_date(cfg)
     sync_history(cfg, report_date, retention_days=args.retention_days)
 
 
