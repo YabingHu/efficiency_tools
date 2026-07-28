@@ -110,7 +110,9 @@ def test_paper_sections_render_as_one_switchable_group(cfg):
     )
     html = path.read_text(encoding="utf-8")
 
-    nav_html = html.split('<nav class="section-nav" aria-label="日报板块">', 1)[1].split("</nav>", 1)[0]
+    nav_html = html.split(
+        '<nav class="section-nav" aria-label="日报板块">', 1,
+    )[1].split("</nav>", 1)[0]
     assert 'href="#section-papers-group">📚 论文动态 <span class="count">3</span></a>' in nav_html
     assert 'href="#section-papers"' not in nav_html
     assert 'href="#section-arxiv"' not in nav_html
@@ -134,9 +136,38 @@ def test_empty_paper_topics_are_hidden_from_switcher(cfg):
     )
     html = path.read_text(encoding="utf-8")
 
-    nav_html = html.split('<nav class="section-nav" aria-label="日报板块">', 1)[1].split("</nav>", 1)[0]
+    nav_html = html.split(
+        '<nav class="section-nav" aria-label="日报板块">', 1,
+    )[1].split("</nav>", 1)[0]
     assert 'href="#section-papers-group">📚 论文动态 <span class="count">1</span></a>' in nav_html
     assert 'id="paper-topic-arxiv"' in html
     assert 'id="paper-topic-papers"' not in html
     assert 'id="paper-topic-eval"' not in html
     assert 'id="paper-topic-agent"' not in html
+
+
+def test_render_shows_today_threads_and_quality_badge(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key == "industry"
+    news = NewsItem(
+        "thread-1", "industry", "OpenAI releases a new LLM safety report",
+        "https://example.com/thread", "OpenAI", summary_zh="安全报告摘要",
+        importance=4, meta={"quality_score": 88, "quality_reasons": ["AI 相关性强"]},
+    )
+
+    path = render(
+        cfg, [news], [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        today_threads=[{
+            "title": "安全治理：OpenAI releases a new LLM safety report",
+            "summary": "1 条相关内容，主要来自 OpenAI。",
+            "item_ids": ["thread-1"],
+            "score": 88,
+        }],
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    assert "🧭 今日主线" in html
+    assert "安全治理：OpenAI releases" in html
+    assert "质量 88" in html
+    assert "AI 相关性强" in html

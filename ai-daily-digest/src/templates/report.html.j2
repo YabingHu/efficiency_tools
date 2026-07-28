@@ -65,6 +65,17 @@
   }
   .overview h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 12px; }
   .overview li { margin-left: 20px; margin-bottom: 8px; font-size: 15px; color: var(--text-soft); }
+  .threads {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 24px 26px; margin-bottom: 30px; box-shadow: var(--shadow);
+  }
+  .threads h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 14px; }
+  .thread-list { display: grid; gap: 12px; }
+  .thread {
+    border-left: 3px solid #c9c7ef; padding: 2px 0 2px 13px;
+  }
+  .thread-title { font-size: 15px; font-weight: 650; line-height: 1.5; }
+  .thread-summary { margin-top: 4px; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
   .section-nav {
     display: flex; flex-wrap: wrap; gap: 10px; overflow-x: visible; padding: 2px 2px 0;
     margin-bottom: 38px; scrollbar-width: none;
@@ -139,6 +150,7 @@
     background: var(--primary-light); color: var(--primary);
   }
   .badge.hot { background: #fef2f2; color: #dc2626; }
+  .badge.quality { background: #ecfdf5; color: #047857; }
   .stars { font-size: 12px; color: var(--text-light); }
   .discussion-link { color: var(--primary); font-size: 12px; text-decoration: none; }
   .discussion-link:hover { text-decoration: underline; }
@@ -169,6 +181,7 @@
     header h1 { font-size: 28px; }
     .container { padding: 0 17px 56px; }
     .overview { padding: 22px 20px; border-radius: 16px; }
+    .threads { padding: 21px 20px; border-radius: 16px; }
     .section-nav {
       flex-wrap: nowrap; overflow-x: auto; padding-bottom: 16px;
       margin-bottom: 28px;
@@ -195,6 +208,9 @@
   <div class="footer">
     <span class="badge">{{ item.source }}</span>
     {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
+    {% if item.meta.quality_score %}<span class="badge quality">质量 {{ item.meta.quality_score|int }}</span>{% endif %}
+    {% set quality_reasons = item.meta.quality_reasons|default([]) %}
+    {% for reason in quality_reasons[:2] %}<span class="stars">{{ reason }}</span>{% endfor %}
     {% if item.section == 'papers' and item.score %}<span class="stars">👍 {{ item.score|int }}</span>{% endif %}
     {% if item.section == 'github' and item.meta.stars_today %}<span class="stars">⭐ +{{ item.meta.stars_today }} today{% if item.meta.language %} · {{ item.meta.language }}{% endif %}</span>{% endif %}
     {% if item.section in ['community', 'community_cn'] %}
@@ -222,6 +238,20 @@
     <ul>
       {% for point in overview %}<li>{{ point }}</li>{% endfor %}
     </ul>
+  </div>
+  {% endif %}
+
+  {% if today_threads %}
+  <div class="threads">
+    <h2>🧭 今日主线</h2>
+    <div class="thread-list">
+      {% for thread in today_threads %}
+      <div class="thread">
+        <div class="thread-title">{{ thread.title }}</div>
+        <div class="thread-summary">{{ thread.summary }}</div>
+      </div>
+      {% endfor %}
+    </div>
   </div>
   {% endif %}
 

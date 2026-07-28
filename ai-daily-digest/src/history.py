@@ -87,10 +87,7 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config()
-    if args.date:
-        report_date = date.fromisoformat(args.date)
-    else:
-        report_date = _latest_report_date(cfg)
+    report_date = date.fromisoformat(args.date) if args.date else _latest_report_date(cfg)
     sync_history(cfg, report_date, retention_days=args.retention_days)
 
 

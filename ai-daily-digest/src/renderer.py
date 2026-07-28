@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from .editorial import quality_sort_key
 from .models import NewsItem
 from .utils import take_with_source_limit
 
@@ -72,8 +73,8 @@ def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -
 
 
 def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
-    """一个板块最终展示的条目：按 (importance, score) 排序后限流截断。"""
-    sec_items = sorted(items, key=lambda x: (x.importance, x.score), reverse=True)
+    """一个板块最终展示的条目：按编辑质量分、重要度与来源热度排序后限流截断。"""
+    sec_items = sorted(items, key=quality_sort_key, reverse=True)
     limit = sec_cfg.get("limit", 8)
     max_per_source = sec_cfg.get("max_per_source")
     if max_per_source:
@@ -118,7 +119,8 @@ def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
 
 
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
-           report_date: datetime, *, update_latest: bool = True) -> Path:
+           report_date: datetime, *, today_threads: list[dict] | None = None,
+           update_latest: bool = True) -> Path:
     env = _environment()
     template = env.get_template("report.html.j2")
 
@@ -149,6 +151,7 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
         date_str=report_date.strftime("%Y-%m-%d"),
         weekday=WEEKDAYS[report_date.weekday()],
         overview=overview,
+        today_threads=today_threads or [],
         sections=sections,
         generated_at=datetime.now(
             ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))

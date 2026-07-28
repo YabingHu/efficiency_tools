@@ -26,6 +26,7 @@ from .collectors import (
     rss_news,
 )
 from .config import get_api_key, load_config
+from .editorial import apply_quality_scores, build_today_threads, filter_noise_items
 from .renderer import check_template, render, selected_items, write_status
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
@@ -245,9 +246,13 @@ def main():
     # 3. 摘要前预裁剪：每板块最多保留 limit*2 条，控制 token 消耗
     #    （有热度分的按分数取头部；arXiv 等无分数的保持采集顺序=时间倒序）
     deduped = trim_items(cfg, deduped)
+    before_quality = len(deduped)
+    deduped = filter_noise_items(cfg, deduped, stage="pre_llm")
+    pre_quality_dropped = before_quality - len(deduped)
+    log.info("质量过滤后送入摘要 %d 条（原 %d 条）", len(deduped), before_quality)
     log.info("预裁剪后送入摘要 %d 条", len(deduped))
 
-    # 4. 大模型摘要 + 今日要点
+    # 4. 大模型摘要 + 今日要点/主线
     overview = []
     if args.no_llm:
         log.info("--no-llm：跳过摘要，条目以原文展示")
@@ -256,10 +261,17 @@ def main():
         summarizer = Summarizer(cfg)
         summarizer.summarize_items(deduped)
         overview = summarizer.make_overview(deduped)
+    apply_quality_scores(deduped)
+    before_post_quality = len(deduped)
+    deduped = filter_noise_items(cfg, deduped, stage="post_llm")
+    post_quality_dropped = before_post_quality - len(deduped)
+    log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
+    today_threads = build_today_threads(selected_items(cfg, deduped))
 
     # 5. 渲染输出
     out_path = render(
-        cfg, deduped, overview, report_date, update_latest=is_current,
+        cfg, deduped, overview, report_date, today_threads=today_threads,
+        update_latest=is_current,
     )
 
     # 6. 把本期真正展示的条目登记进跨天去重台账，供后续几天抑制重复
@@ -279,6 +291,11 @@ def main():
             "no_llm": args.no_llm,
             "collected_items": len(items),
             "render_candidates": len(deduped),
+            "quality_filtered_items": {
+                "pre_llm": pre_quality_dropped,
+                "post_llm": post_quality_dropped,
+            },
+            "today_threads": len(today_threads),
             **diagnostics,
             "section_counts": {
                 key: sum(item.section == key for item in deduped)
