@@ -68,11 +68,11 @@ def test_first_matching_topic_wins():
     assert item.section == "eval"
 
 
-def test_hf_papers_are_never_rerouted():
+def test_hf_papers_are_rerouted_into_topic_boards():
     cfg = topic_cfg()
     item = paper("1", "A benchmark suite", section="papers")
     route_paper_topics(cfg, [item])
-    assert item.section == "papers"
+    assert item.section == "eval"
 
 
 def test_disabled_topic_section_leaves_paper_in_arxiv():

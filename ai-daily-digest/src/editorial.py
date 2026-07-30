@@ -188,27 +188,65 @@ def topic_tags(item: NewsItem) -> list[str]:
     return list(dict.fromkeys(tags))[:3]
 
 
+def primary_topic(item: NewsItem) -> str:
+    """Assign one editorial lane so the same item cannot dominate several threads."""
+    text = _haystack(item)
+    if item.section == "agent" or any(
+        term in text for term in ("agent", "智能体", "tool use", "tool calling")
+    ):
+        return "智能体"
+    if item.section == "eval" or any(
+        term in text for term in ("benchmark", "evaluation", "leaderboard", "评测")
+    ):
+        return "评测"
+    if any(term in text for term in ("safety", "security", "alignment", "安全", "治理")):
+        return "安全治理"
+    if any(term in text for term in ("inference", "latency", "cache", "推理", "性能")):
+        return "工程优化"
+    if any(term in text for term in ("open source", "weights", "开源", "github")):
+        return "开源"
+    if item.section in {"papers", "arxiv"}:
+        return "论文"
+    if item.section in {"industry", "media"}:
+        return "产业动态"
+    if item.section in {"community", "community_cn"}:
+        return "社区热议"
+    return "其他"
+
+
+def _short_title(title: str) -> str:
+    value = " ".join(title.split())
+    return value if len(value) <= 64 else value[:63].rstrip() + "…"
+
+
 def build_today_threads(items: list[NewsItem], limit: int = 4) -> list[dict]:
     """Create deterministic editorial threads for the top of the digest."""
     buckets: dict[str, list[NewsItem]] = defaultdict(list)
     for item in items:
-        for tag in topic_tags(item):
-            buckets[tag].append(item)
+        buckets[primary_topic(item)].append(item)
 
-    threads = []
+    candidates = []
     for tag, tagged in buckets.items():
         ranked = sorted(tagged, key=quality_sort_key, reverse=True)
         if len(ranked) < 2 and ranked[0].meta.get("quality_score", 0) < 60:
             continue
         top = ranked[:3]
         sources = "、".join(list(dict.fromkeys(item.source for item in top))[:3])
-        titles = "；".join(item.title for item in top[:2])
-        threads.append({
-            "title": f"{tag}：{titles[:90]}",
+        lead = _short_title(top[0].title)
+        candidates.append({
+            "title": f"{tag}：{lead}",
             "summary": f"{len(ranked)} 条相关内容，主要来自 {sources}。",
             "item_ids": [item.id for item in top],
             "score": round(sum(item.meta.get("quality_score", 0) for item in top), 1),
         })
 
-    threads.sort(key=lambda thread: thread["score"], reverse=True)
-    return threads[:limit]
+    candidates.sort(key=lambda thread: thread["score"], reverse=True)
+    threads, used_items = [], set()
+    for candidate in candidates:
+        if used_items & set(candidate["item_ids"]):
+            continue
+        threads.append(candidate)
+        used_items.update(candidate["item_ids"])
+        if len(threads) >= limit:
+            break
+    return threads

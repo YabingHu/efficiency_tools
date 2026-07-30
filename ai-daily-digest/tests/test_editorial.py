@@ -2,6 +2,7 @@ from src.editorial import (
     apply_quality_scores,
     build_today_threads,
     filter_noise_items,
+    primary_topic,
     quality_sort_key,
     score_item_quality,
 )
@@ -76,3 +77,45 @@ def test_build_today_threads_groups_related_high_quality_items():
 
     assert threads
     assert any("智能体" in thread["title"] for thread in threads)
+
+
+def test_primary_topic_is_exclusive_for_overlapping_paper_signals():
+    paper = item(
+        "paper", section="papers",
+        title="Agent benchmark for LLM inference cache",
+        text="agent benchmark inference " * 20,
+    )
+
+    assert primary_topic(paper) == "智能体"
+
+
+def test_today_threads_do_not_repeat_the_same_lead_item_across_topics():
+    items = [
+        item(
+            "overlap", section="papers",
+            title="Agent benchmark for LLM inference cache",
+            text="agent benchmark inference " * 20,
+        ),
+        item(
+            "agent", section="agent",
+            title="Tool calling agent orchestration",
+            text="agent tool calling " * 20,
+        ),
+        item(
+            "safety", section="media",
+            title="AI safety governance release",
+            text="AI safety governance " * 20,
+        ),
+        item(
+            "security", section="community",
+            title="Security discussion for AI systems",
+            text="AI security discussion " * 20,
+        ),
+    ]
+    apply_quality_scores(items)
+
+    threads = build_today_threads(items)
+    lead_titles = [thread["title"] for thread in threads]
+
+    assert len(lead_titles) == len(set(lead_titles))
+    assert sum("Agent benchmark" in title for title in lead_titles) == 1

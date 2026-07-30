@@ -1,8 +1,8 @@
-"""论文专题分流：把命中主题关键词的 arXiv 论文归入专属板块。
+"""论文专题分流：把命中主题关键词的论文归入专属板块。
 
 通用机制，不硬编码具体主题——主题在 config.yaml 的 paper_topics 里声明，
-加新主题（agent / RAG / 多模态…）只改配置。分流只作用于 arxiv 板的论文，
-HF「今日论文精选」（papers 板）保持不动：已上社区高赞榜的论文留在精选里。
+加新主题（agent / RAG / 多模态…）只改配置。分流作用于 arxiv 和 HF papers
+板的论文，让同一类论文在展示层进入同一个专题。
 
 一篇论文只属于一个板块（NewsItem.section 是单值，也是跨板去重的依据），所以
 命中专题的论文是「移入」专题板，而不是同时出现在两个板，与现有去重逻辑一致。
@@ -19,8 +19,8 @@ from .models import NewsItem
 
 log = logging.getLogger(__name__)
 
-# 只对这些板的论文做专题分流；HF 精选板（papers）保持原样。
-ROUTABLE_SECTIONS = {"arxiv"}
+# 只对论文板做专题分流，非论文资讯不参与。
+ROUTABLE_SECTIONS = {"arxiv", "papers"}
 
 
 def paper_topic_rules(cfg: dict) -> list[tuple[str, list[str]]]:
@@ -51,7 +51,7 @@ def merge_collection_keywords(base_keywords: list[str], cfg: dict) -> list[str]:
 
 
 def route_paper_topics(cfg: dict, items: list[NewsItem]) -> None:
-    """就地把 arxiv 板中命中专题的论文改归专题板；仅路由到已启用的专题板。"""
+    """就地把命中专题的论文改归专题板；仅路由到已启用的专题板。"""
     rules = paper_topic_rules(cfg)
     if not rules:
         return
