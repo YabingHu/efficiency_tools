@@ -77,6 +77,7 @@ def test_build_today_threads_groups_related_high_quality_items():
 
     assert threads
     assert any("智能体" in thread["title"] for thread in threads)
+    assert all("LLM agent benchmark for tool use" not in thread["title"] for thread in threads)
 
 
 def test_primary_topic_is_exclusive_for_overlapping_paper_signals():
@@ -118,4 +119,61 @@ def test_today_threads_do_not_repeat_the_same_lead_item_across_topics():
     lead_titles = [thread["title"] for thread in threads]
 
     assert len(lead_titles) == len(set(lead_titles))
-    assert sum("Agent benchmark" in title for title in lead_titles) == 1
+    assert all("Agent benchmark" not in title for title in lead_titles)
+
+
+def test_today_threads_avoid_overview_lead_items():
+    items = [
+        item(
+            "anthropic", section="media",
+            title="Anthropic reveals Claude security incident in real companies",
+            text="Claude security governance incident " * 20,
+            score=300,
+        ),
+        item(
+            "openai", section="industry",
+            title="OpenAI宣布全球活跃用户突破10亿",
+            text="OpenAI product growth 用户 10 亿 " * 20,
+            score=250,
+        ),
+        item(
+            "agent", section="agent",
+            title="Agent workflow orchestration benchmark",
+            text="agent tool calling orchestration " * 20,
+            score=200,
+        ),
+    ]
+    apply_quality_scores(items)
+    overview = [
+        "Anthropic 披露 Claude 安全事件，引发真实公司系统风险担忧。",
+        "OpenAI 全球活跃用户突破 10 亿，成为 AI 行业规模化标志。",
+    ]
+
+    threads = build_today_threads(items, overview_points=overview)
+    lead_ids = {thread["item_ids"][0] for thread in threads}
+
+    assert "anthropic" not in lead_ids
+    assert "openai" not in lead_ids
+    assert any("智能体" in thread["title"] for thread in threads)
+
+
+def test_today_threads_use_theme_titles_instead_of_news_titles():
+    items = [
+        item(
+            "safety", section="media",
+            title="Anthropic reveals Claude security incident in real companies",
+            text="Claude security hack incident " * 20,
+            score=300,
+        ),
+        item(
+            "security", section="community",
+            title="Security discussion around autonomous AI systems",
+            text="AI security governance " * 20,
+            score=150,
+        ),
+    ]
+    apply_quality_scores(items)
+
+    threads = build_today_threads(items)
+
+    assert threads[0]["title"] == "安全治理：模型自主行动能力正在逼近真实系统风险"

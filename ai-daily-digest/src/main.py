@@ -266,7 +266,7 @@ def main():
     deduped = filter_noise_items(cfg, deduped, stage="post_llm")
     post_quality_dropped = before_post_quality - len(deduped)
     log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
-    today_threads = build_today_threads(selected_items(cfg, deduped))
+    today_threads = build_today_threads(selected_items(cfg, deduped), overview_points=overview)
 
     # 5. 渲染输出
     out_path = render(

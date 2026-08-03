@@ -219,8 +219,66 @@ def _short_title(title: str) -> str:
     return value if len(value) <= 64 else value[:63].rstrip() + "…"
 
 
-def build_today_threads(items: list[NewsItem], limit: int = 4) -> list[dict]:
+def _significant_terms(text: str) -> set[str]:
+    normalized = text.lower()
+    terms = {
+        term
+        for term in re.findall(r"[a-z][a-z0-9-]{2,}", normalized)
+        if term not in {"the", "and", "for", "with", "from", "into", "using"}
+    }
+    cjk = re.findall(r"[\u4e00-\u9fff]", text)
+    terms.update("".join(cjk[i:i + 2]) for i in range(max(0, len(cjk) - 1)))
+    return terms
+
+
+def _covered_by_overview(item: NewsItem, overview_points: list[str]) -> bool:
+    if not overview_points:
+        return False
+    title_terms = _significant_terms(item.title)
+    if not title_terms:
+        return False
+    overview_terms = _significant_terms(" ".join(overview_points))
+    overlap = title_terms & overview_terms
+    return len(overlap) >= 2 and len(overlap) / len(title_terms) >= 0.22
+
+
+def _thread_theme_title(tag: str, lead: NewsItem) -> str:
+    text = _haystack(lead)
+    if tag == "安全治理":
+        if any(term in text for term in ("hack", "breach", "入侵", "失控", "security")):
+            return "安全治理：模型自主行动能力正在逼近真实系统风险"
+        return "安全治理：模型能力扩张带来新的对齐与监管压力"
+    if tag == "智能体":
+        if any(term in text for term in ("gui", "browser", "computer", "移动", "网页")):
+            return "智能体：通用界面操作能力成为产品化竞争焦点"
+        if any(term in text for term in ("multi-agent", "多智能体", "orchestration")):
+            return "智能体：多智能体协作从固定流程走向自适应编排"
+        return "智能体：工具调用和任务规划继续向真实工作流推进"
+    if tag == "评测":
+        return "评测：新基准正在重新衡量模型记忆、推理与可靠性"
+    if tag == "工程优化":
+        return "工程优化：推理成本、延迟和缓存继续成为落地关键"
+    if tag == "开源":
+        return "开源：开放权重和开发工具继续压低实验门槛"
+    if tag == "产业动态":
+        if any(term in text for term in ("user", "用户", "融资", "funding")):
+            return "产业动态：头部 AI 产品进入规模与资本双重竞速"
+        return "产业动态：平台公司继续围绕模型能力重排产品线"
+    if tag == "社区热议":
+        return "社区热议：开发者讨论集中在工具体验和工程取舍"
+    if tag == "论文":
+        return "论文：模型架构与训练方法仍在快速迭代"
+    return f"{tag}：{_short_title(lead.title)}"
+
+
+def build_today_threads(
+    items: list[NewsItem],
+    limit: int = 4,
+    *,
+    overview_points: list[str] | None = None,
+) -> list[dict]:
     """Create deterministic editorial threads for the top of the digest."""
+    overview_points = overview_points or []
     buckets: dict[str, list[NewsItem]] = defaultdict(list)
     for item in items:
         buckets[primary_topic(item)].append(item)
@@ -230,11 +288,16 @@ def build_today_threads(items: list[NewsItem], limit: int = 4) -> list[dict]:
         ranked = sorted(tagged, key=quality_sort_key, reverse=True)
         if len(ranked) < 2 and ranked[0].meta.get("quality_score", 0) < 60:
             continue
-        top = ranked[:3]
+        lead = next(
+            (item for item in ranked if not _covered_by_overview(item, overview_points)),
+            None,
+        )
+        if lead is None:
+            continue
+        top = [lead] + [item for item in ranked if item.id != lead.id][:2]
         sources = "、".join(list(dict.fromkeys(item.source for item in top))[:3])
-        lead = _short_title(top[0].title)
         candidates.append({
-            "title": f"{tag}：{lead}",
+            "title": _thread_theme_title(tag, lead),
             "summary": f"{len(ranked)} 条相关内容，主要来自 {sources}。",
             "item_ids": [item.id for item in top],
             "score": round(sum(item.meta.get("quality_score", 0) for item in top), 1),
