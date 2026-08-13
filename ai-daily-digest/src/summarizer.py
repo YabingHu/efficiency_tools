@@ -61,6 +61,9 @@ OVERVIEW_PROMPT = """你是一名 AI 领域资讯编辑。用户消息中的资�
 {"points": ["要点1", "要点2"], "threads": [{"topic": "评测", "title": "主线标题"}]}
 """
 
+OVERVIEW_CANDIDATE_LIMIT = 15
+OVERVIEW_TOPIC_RATIO = 0.4
+
 
 def _extract_json(text: str):
     """容错解析：剥掉 markdown 代码块围栏后取最外层 JSON 数组。"""
@@ -123,6 +126,39 @@ def _sanitize_comment(comment: str) -> str:
     if _LOW_VALUE_COMMENT_PATTERN.search(value):
         return ""
     return value
+
+
+def _overview_candidates(items: list[NewsItem]) -> list[NewsItem]:
+    """按主题配额挑选 overview 素材，避免论文条目挤占全部名额。"""
+    ranked = sorted(items, key=lambda item: (item.importance, item.score), reverse=True)
+    if len(ranked) <= OVERVIEW_CANDIDATE_LIMIT:
+        return ranked
+
+    topic_cap = max(1, int(OVERVIEW_CANDIDATE_LIMIT * OVERVIEW_TOPIC_RATIO + 0.999))
+    selected: list[NewsItem] = []
+    selected_ids: set[str] = set()
+    topic_counts: dict[str, int] = {}
+
+    # 第一轮每个主题先取一条，确保低热度板块也能进入候选。
+    for item in ranked:
+        topic = primary_topic(item)
+        if topic in topic_counts or len(selected) >= OVERVIEW_CANDIDATE_LIMIT:
+            continue
+        selected.append(item)
+        selected_ids.add(item.id)
+        topic_counts[topic] = 1
+
+    # 第二轮按原有重要度顺序填充，但不让单一主题超过配额。
+    for item in ranked:
+        if len(selected) >= OVERVIEW_CANDIDATE_LIMIT or item.id in selected_ids:
+            continue
+        topic = primary_topic(item)
+        if topic_counts.get(topic, 0) >= topic_cap:
+            continue
+        selected.append(item)
+        selected_ids.add(item.id)
+        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+    return selected
 
 
 class Summarizer:
@@ -325,7 +361,7 @@ class Summarizer:
         self._save_cache_safely()
 
     def make_overview(self, items: list[NewsItem]) -> tuple[list[str], dict[str, str]]:
-        top = sorted(items, key=lambda x: (x.importance, x.score), reverse=True)[:15]
+        top = _overview_candidates(items)
         payload = [
             {
                 "title": it.title,

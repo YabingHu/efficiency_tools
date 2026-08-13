@@ -133,3 +133,46 @@ def test_make_overview_returns_points_and_content_based_thread_titles(tmp_path):
     assert points == ["OpenAI 发布 GPT-5，用户规模达到 10 亿。"]
     assert thread_titles == {"产业动态": "OpenAI 发布 GPT-5，用户达 10 亿"}
     assert captured["payload"][0]["topic"] == "产业动态"
+
+
+def test_make_overview_reserves_candidates_for_non_paper_topics(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    items = [
+        NewsItem(
+            f"paper-{index}",
+            "papers",
+            f"LLM paper {index}",
+            f"https://example.com/paper/{index}",
+            "HF Papers",
+            text="LLM paper research details.",
+            importance=5,
+        )
+        for index in range(20)
+    ]
+    items.extend([
+        NewsItem(
+            "industry-1", "industry", "OpenAI model release",
+            "https://example.com/industry", "OpenAI", text="Official model release.", importance=1,
+        ),
+        NewsItem(
+            "community-1", "community", "Developer discussion about an AI model",
+            "https://example.com/community", "社区", text="Community discussion.", importance=1,
+        ),
+        NewsItem(
+            "github-1", "github", "Open source LLM tool",
+            "https://example.com/github", "GitHub", text="Open source project.", importance=1,
+        ),
+    ])
+    captured = {}
+
+    def fake_chat(_prompt, payload):
+        captured["payload"] = payload
+        return '{"points":[],"threads":[]}'
+
+    summarizer._chat = fake_chat
+    summarizer.make_overview(items)
+
+    topics = [entry["topic"] for entry in captured["payload"]]
+    assert len(captured["payload"]) <= 15
+    assert sum(topic != "论文" for topic in topics) >= 3
+    assert topics.count("论文") <= 6
