@@ -253,20 +253,24 @@ def main():
     log.info("预裁剪后送入摘要 %d 条", len(deduped))
 
     # 4. 大模型摘要 + 今日要点/主线
-    overview = []
+    overview, thread_titles = [], {}
     if args.no_llm:
         log.info("--no-llm：跳过摘要，条目以原文展示")
         apply_no_llm_fallback(deduped)
     else:
         summarizer = Summarizer(cfg)
         summarizer.summarize_items(deduped)
-        overview = summarizer.make_overview(deduped)
+        overview, thread_titles = summarizer.make_overview(deduped)
     apply_quality_scores(deduped)
     before_post_quality = len(deduped)
     deduped = filter_noise_items(cfg, deduped, stage="post_llm")
     post_quality_dropped = before_post_quality - len(deduped)
     log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
-    today_threads = build_today_threads(selected_items(cfg, deduped), overview_points=overview)
+    today_threads = build_today_threads(
+        selected_items(cfg, deduped),
+        overview_points=overview,
+        thread_titles=thread_titles,
+    )
 
     # 5. 渲染输出
     out_path = render(

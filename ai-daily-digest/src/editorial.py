@@ -276,9 +276,11 @@ def build_today_threads(
     limit: int = 4,
     *,
     overview_points: list[str] | None = None,
+    thread_titles: dict[str, str] | None = None,
 ) -> list[dict]:
-    """Create deterministic editorial threads for the top of the digest."""
+    """生成日报顶部的主线；模型标题缺失时回退到确定性的本地标题。"""
     overview_points = overview_points or []
+    thread_titles = thread_titles or {}
     buckets: dict[str, list[NewsItem]] = defaultdict(list)
     for item in items:
         buckets[primary_topic(item)].append(item)
@@ -297,7 +299,7 @@ def build_today_threads(
         top = [lead] + [item for item in ranked if item.id != lead.id][:2]
         sources = "、".join(list(dict.fromkeys(item.source for item in top))[:3])
         candidates.append({
-            "title": _thread_theme_title(tag, lead),
+            "title": thread_titles.get(tag) or _thread_theme_title(tag, lead),
             "summary": f"{len(ranked)} 条相关内容，主要来自 {sources}。",
             "item_ids": [item.id for item in top],
             "score": round(sum(item.meta.get("quality_score", 0) for item in top), 1),

@@ -1,7 +1,12 @@
 import pytest
 
 from src.models import NewsItem
-from src.summarizer import Summarizer, _extract_json, _sanitize_comment, _validated_results
+from src.summarizer import (
+    Summarizer,
+    _extract_json,
+    _sanitize_comment,
+    _validated_results,
+)
 
 
 def _make_summarizer(tmp_path):
@@ -99,3 +104,32 @@ def test_summary_cache_is_reused_across_runs(tmp_path):
     assert len(calls) == 1
     assert second_item.summary_zh == "缓存摘要"
     assert second_item.importance == 4
+
+
+def test_make_overview_returns_points_and_content_based_thread_titles(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    item = NewsItem(
+        "industry-1",
+        "industry",
+        "OpenAI 发布 GPT-5",
+        "https://example.com/gpt-5",
+        "OpenAI",
+        text="OpenAI 发布 GPT-5，活跃用户达到 10 亿。",
+        summary_zh="OpenAI 发布 GPT-5，活跃用户达到 10 亿。",
+        importance=5,
+    )
+    captured = {}
+
+    def fake_chat(_prompt, payload):
+        captured["payload"] = payload
+        return (
+            '{"points":["OpenAI 发布 GPT-5，用户规模达到 10 亿。"],'
+            '"threads":[{"topic":"产业动态","title":"OpenAI 发布 GPT-5，用户达 10 亿"}]}'
+        )
+
+    summarizer._chat = fake_chat
+    points, thread_titles = summarizer.make_overview([item])
+
+    assert points == ["OpenAI 发布 GPT-5，用户规模达到 10 亿。"]
+    assert thread_titles == {"产业动态": "OpenAI 发布 GPT-5，用户达 10 亿"}
+    assert captured["payload"][0]["topic"] == "产业动态"
