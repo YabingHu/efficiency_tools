@@ -197,3 +197,28 @@ def test_arxiv_keeps_api_result_without_calling_rss(monkeypatch, cfg):
     assert [item.id for item in arxiv_papers.collect(cfg, date(2026, 7, 20))] == [
         "arxiv:2607.01234"
     ]
+
+
+def test_arxiv_relevance_score_can_beat_newer_but_weakly_related_paper():
+    as_of = datetime(2026, 7, 20, 12, tzinfo=UTC)
+    older = SimpleNamespace(
+        id="https://arxiv.org/abs/2607.10001v1",
+        title="LLM agent benchmark for reasoning",
+        summary="A study of language model evaluation.",
+    )
+    newer = SimpleNamespace(
+        id="https://arxiv.org/abs/2607.10002v1",
+        title="LLM applications in weather forecasting",
+        summary="A short application report.",
+    )
+
+    older_item = arxiv_papers._make_item(
+        older, as_of.replace(hour=0), ["llm", "agent", "benchmark"], as_of,
+    )
+    newer_item = arxiv_papers._make_item(
+        newer, as_of.replace(hour=11), ["llm", "agent", "benchmark"], as_of,
+    )
+
+    assert older_item is not None
+    assert newer_item is not None
+    assert older_item.score > newer_item.score

@@ -38,7 +38,29 @@ def _arxiv_id(entry) -> str:
     return raw.split("/abs/")[-1].split(":")[-1].split("v")[0].strip()
 
 
-def _make_item(entry, published: datetime, keywords: list[str]) -> NewsItem | None:
+def _relevance_score(
+    title: str,
+    summary: str,
+    keywords: list[str],
+    published: datetime,
+    as_of: datetime,
+) -> float:
+    """用关键词命中和小幅新鲜度计算廉价预排序分。"""
+    title_lower = title.lower()
+    summary_lower = summary.lower()
+    title_hits = sum(1 for keyword in keywords if keyword.lower() in title_lower)
+    summary_hits = sum(1 for keyword in keywords if keyword.lower() in summary_lower)
+    age_hours = max(0.0, (as_of - published).total_seconds() / 3600)
+    freshness = max(0.0, 1.0 - age_hours / (7 * 24))
+    return round(title_hits * 10 + summary_hits * 2 + freshness, 3)
+
+
+def _make_item(
+    entry,
+    published: datetime,
+    keywords: list[str],
+    as_of: datetime | None = None,
+) -> NewsItem | None:
     title = " ".join(entry.title.split())
     summary = RSS_SUMMARY_PREFIX.sub("", " ".join(entry.summary.split()))
     if keywords and not any(k in f"{title} {summary}".lower() for k in keywords):
@@ -46,6 +68,7 @@ def _make_item(entry, published: datetime, keywords: list[str]) -> NewsItem | No
     arxiv_id = _arxiv_id(entry)
     if not arxiv_id:
         return None
+    as_of = as_of or published
     return NewsItem(
         id=f"arxiv:{arxiv_id}",
         section="arxiv",
@@ -53,7 +76,11 @@ def _make_item(entry, published: datetime, keywords: list[str]) -> NewsItem | No
         url=f"https://arxiv.org/abs/{arxiv_id}",
         source="arXiv",
         text=summary[:1500],
-        meta={"published": published.isoformat()},
+        score=_relevance_score(title, summary, keywords, published, as_of),
+        meta={
+            "published": published.isoformat(),
+            "relevance_score": _relevance_score(title, summary, keywords, published, as_of),
+        },
     )
 
 
@@ -118,7 +145,7 @@ def _collect_from_api(
         published = _published(entry)
         if published is None or published < cutoff or published > as_of:
             continue
-        item = _make_item(entry, published, keywords)
+        item = _make_item(entry, published, keywords, as_of)
         if item is not None:
             items.append(item)
     log.info("arXiv API 命中 %d 篇", len(items))
@@ -156,7 +183,7 @@ def _collect_from_rss(
         published = _published(entry)
         if published is None or published > as_of or as_of - published > max_staleness:
             continue
-        item = _make_item(entry, published, keywords)
+        item = _make_item(entry, published, keywords, as_of)
         if item is not None:
             items.append(item)
     items = items[:src_cfg.get("max_results", 50)]
