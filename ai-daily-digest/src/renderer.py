@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .editorial import quality_sort_key
+from .editorial import quality_sort_key, topic_tags
 from .models import NewsItem
 from .utils import take_with_source_limit
 
@@ -75,6 +75,8 @@ def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -
 def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
     """一个板块最终展示的条目：按编辑质量分、重要度与来源热度排序后限流截断。"""
     sec_items = sorted(items, key=quality_sort_key, reverse=True)
+    for item in sec_items:
+        item.meta["topic_tags"] = topic_tags(item)
     limit = sec_cfg.get("limit", 8)
     max_per_source = sec_cfg.get("max_per_source")
     if max_per_source:

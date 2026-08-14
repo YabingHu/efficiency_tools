@@ -171,3 +171,27 @@ def test_render_shows_today_threads_and_quality_badge(cfg):
     assert "安全治理：OpenAI releases" in html
     assert "质量 88" in html
     assert "AI 相关性强" in html
+
+
+def test_render_shows_topic_tags_for_paper_and_community_cards(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key in {"papers", "community"}
+    items = [
+        NewsItem(
+            "paper-tag", "papers", "A benchmark paper", "https://example.com/paper",
+            "HF Papers", text="A paper about benchmark evaluation.", summary_zh="论文摘要",
+        ),
+        NewsItem(
+            "community-tag", "community", "Developer discussion", "https://example.com/community",
+            "Hacker News", text="AI developer discussion.", summary_zh="社区讨论摘要",
+        ),
+    ]
+
+    path = render(
+        cfg, items, [], datetime(2026, 7, 18, tzinfo=ZoneInfo("Asia/Shanghai")),
+        update_latest=False,
+    )
+    html = path.read_text(encoding="utf-8")
+
+    assert 'class="badge tag">论文</span>' in html
+    assert 'class="badge tag">社区热议</span>' in html

@@ -151,6 +151,7 @@
   }
   .badge.hot { background: #fef2f2; color: #dc2626; }
   .badge.quality { background: #ecfdf5; color: #047857; }
+  .badge.tag { background: #eef6ff; color: #2563eb; }
   .stars { font-size: 12px; color: var(--text-light); }
   .discussion-link { color: var(--primary); font-size: 12px; text-decoration: none; }
   .discussion-link:hover { text-decoration: underline; }
@@ -207,6 +208,7 @@
   {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
   <div class="footer">
     <span class="badge">{{ item.source }}</span>
+    {% for tag in item.meta.topic_tags|default([]) %}<span class="badge tag">{{ tag }}</span>{% endfor %}
     {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
     {% if item.meta.quality_score %}<span class="badge quality">质量 {{ item.meta.quality_score|int }}</span>{% endif %}
     {% set quality_reasons = item.meta.quality_reasons|default([]) %}
