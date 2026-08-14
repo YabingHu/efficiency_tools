@@ -18,6 +18,11 @@ def _positive_int(value, path: str, *, maximum: int | None = None) -> int:
     return value
 
 
+def _score_threshold(value, path: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
+        raise ValueError(f"{path} 必须是 0~100 的数字")
+
+
 def _http_url(value, path: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{path} 必须是 URL 字符串")
@@ -72,6 +77,38 @@ def validate_config(cfg: dict) -> None:
                 f"sections.{key}.max_per_source",
                 maximum=100,
             )
+
+    quality = cfg.get("quality", {})
+    if not isinstance(quality, dict):
+        raise ValueError("quality 必须是对象")
+    if not isinstance(quality.get("enabled", True), bool):
+        raise ValueError("quality.enabled 必须是布尔值")
+    _positive_int(
+        quality.get("min_items_per_section", 1),
+        "quality.min_items_per_section",
+        maximum=100,
+    )
+    min_score = quality.get("min_score", {})
+    if not isinstance(min_score, dict):
+        raise ValueError("quality.min_score 必须是对象")
+    valid_threshold_keys = set(sections) | {"default"}
+    if any(stage in min_score for stage in ("pre_llm", "post_llm")):
+        threshold_sets = {
+            stage: min_score.get(stage, {})
+            for stage in ("pre_llm", "post_llm")
+        }
+    else:
+        threshold_sets = {"兼容旧配置": min_score}
+    for stage, thresholds in threshold_sets.items():
+        if not isinstance(thresholds, dict):
+            raise ValueError(f"quality.min_score.{stage} 必须是对象")
+        unknown = set(thresholds) - valid_threshold_keys
+        if unknown:
+            raise ValueError(
+                f"quality.min_score.{stage} 包含未知板块: {', '.join(sorted(unknown))}"
+            )
+        for section, threshold in thresholds.items():
+            _score_threshold(threshold, f"quality.min_score.{stage}.{section}")
 
     paper_topics = cfg.get("paper_topics", [])
     if not isinstance(paper_topics, list):

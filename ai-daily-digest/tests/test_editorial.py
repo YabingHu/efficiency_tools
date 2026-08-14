@@ -47,6 +47,27 @@ def test_filter_noise_items_keeps_best_fallback_for_sparse_section():
     assert [value.id for value in filtered] == ["better"]
 
 
+def test_filter_noise_items_uses_looser_pre_llm_threshold():
+    cfg = {
+        "quality": {
+            "enabled": True,
+            "min_items_per_section": 0,
+            "min_score": {
+                "pre_llm": {"default": 0},
+                "post_llm": {"default": 100},
+            },
+        },
+    }
+    candidate = item("candidate", section="industry", title="LLM model release")
+
+    pre_llm = filter_noise_items(cfg, [candidate], stage="pre_llm")
+    post_llm = filter_noise_items(cfg, [candidate], stage="post_llm")
+
+    assert len(pre_llm) >= len(post_llm)
+    assert [value.id for value in pre_llm] == ["candidate"]
+    assert post_llm == []
+
+
 def test_quality_sort_key_prioritizes_editorial_score():
     low_importance = item("quality", title="OpenAI LLM safety benchmark", score=0)
     low_importance.importance = 2

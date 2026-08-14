@@ -126,6 +126,9 @@ def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[
         return items
 
     thresholds = quality_cfg.get("min_score", {})
+    stage_thresholds = thresholds.get(stage) if isinstance(thresholds, dict) else None
+    if isinstance(stage_thresholds, dict):
+        thresholds = stage_thresholds
     default_threshold = thresholds.get("default", 18 if stage == "pre_llm" else 24)
     kept_by_section: dict[str, list[NewsItem]] = defaultdict(list)
     for item in items:

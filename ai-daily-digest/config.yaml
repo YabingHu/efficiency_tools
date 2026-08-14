@@ -9,10 +9,16 @@ quality:
   enabled: true
   min_items_per_section: 1
   min_score:
-    default: 24
-    github: 30
-    community: 22
-    community_cn: 22
+    pre_llm:
+      default: 16
+      github: 22
+      community: 16
+      community_cn: 16
+    post_llm:
+      default: 24
+      github: 30
+      community: 22
+      community_cn: 22
 
 # 跨天去重：同一条资讯连续几天被采集到时，只在第一次展示，窗口期内不再重复。
 # 单次运行内的去重始终生效；此处仅控制跨天窗口。台账存于 history/seen-items.json。

@@ -43,3 +43,15 @@ def test_config_rejects_unknown_official_page_parser():
     cfg["sources"]["official_updates"]["sites"][0]["parser"] = "unknown"
     with pytest.raises(ValueError, match="parser"):
         validate_config(cfg)
+
+
+def test_config_accepts_legacy_flat_quality_thresholds():
+    cfg = deepcopy(load_config())
+    cfg.pop("_root", None)
+    cfg["quality"]["min_score"] = {
+        "default": 24,
+        "github": 30,
+        "community": 22,
+    }
+
+    validate_config(cfg)
