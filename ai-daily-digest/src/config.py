@@ -59,6 +59,16 @@ def validate_config(cfg: dict) -> None:
     if not isinstance(dedup.get("enabled", True), bool):
         raise ValueError("dedup.enabled 必须是布尔值")
     _positive_int(dedup.get("window_days", 7), "dedup.window_days", maximum=90)
+    cross_source = dedup.get("cross_source", {})
+    if not isinstance(cross_source, dict):
+        raise ValueError("dedup.cross_source 必须是对象")
+    if not isinstance(cross_source.get("enabled", True), bool):
+        raise ValueError("dedup.cross_source.enabled 必须是布尔值")
+    similarity = cross_source.get("similarity", 0.6)
+    if isinstance(similarity, bool) or not isinstance(similarity, (int, float)):
+        raise ValueError("dedup.cross_source.similarity 必须是数字")
+    if not 0 < similarity <= 1:
+        raise ValueError("dedup.cross_source.similarity 必须大于 0 且不超过 1")
 
     sections = cfg.get("sections")
     if not isinstance(sections, dict) or not sections:

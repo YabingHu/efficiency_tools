@@ -55,3 +55,12 @@ def test_config_accepts_legacy_flat_quality_thresholds():
     }
 
     validate_config(cfg)
+
+
+def test_config_rejects_invalid_cross_source_similarity():
+    cfg = deepcopy(load_config())
+    cfg.pop("_root", None)
+    cfg["dedup"]["cross_source"]["similarity"] = 1.1
+
+    with pytest.raises(ValueError, match="similarity"):
+        validate_config(cfg)

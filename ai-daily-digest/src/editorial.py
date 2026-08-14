@@ -39,6 +39,18 @@ SECTION_BASE = {
     "community_cn": 14,
 }
 
+SECTION_PRIORITY = {
+    "papers": 9,
+    "eval": 8,
+    "agent": 8,
+    "arxiv": 7,
+    "industry": 6,
+    "media": 5,
+    "github": 5,
+    "community": 4,
+    "community_cn": 3,
+}
+
 
 def _haystack(item: NewsItem) -> str:
     return " ".join(
@@ -232,6 +244,51 @@ def _significant_terms(text: str) -> set[str]:
     cjk = re.findall(r"[\u4e00-\u9fff]", text)
     terms.update("".join(cjk[i:i + 2]) for i in range(max(0, len(cjk) - 1)))
     return terms
+
+
+def near_duplicate_similarity(left: NewsItem, right: NewsItem) -> float:
+    """计算两条资讯标题与摘要有效词的 Jaccard 相似度。"""
+    left_body = left.summary_zh.strip() or left.text.strip()
+    right_body = right.summary_zh.strip() or right.text.strip()
+    left_terms = _significant_terms(f"{left.title} {left_body}")
+    right_terms = _significant_terms(f"{right.title} {right_body}")
+    if min(len(left_terms), len(right_terms)) < 3:
+        return 0.0
+    overlap = left_terms & right_terms
+    if len(overlap) < 3:
+        return 0.0
+    return len(overlap) / len(left_terms | right_terms)
+
+
+def _near_duplicate_rank(item: NewsItem) -> tuple[float, int, float, int]:
+    quality = item.meta.get("quality_score")
+    quality_score = float(quality) if quality is not None else -1.0
+    return (
+        quality_score,
+        int(item.importance or 0),
+        float(item.score or 0),
+        SECTION_PRIORITY.get(item.section, 0),
+    )
+
+
+def collapse_near_duplicates(items: list[NewsItem], *, similarity: float = 0.6) -> list[NewsItem]:
+    """折叠不同板块的近似资讯，保留质量更高的条目。"""
+    kept: list[NewsItem] = []
+    for item in items:
+        duplicate_index = next(
+            (
+                index for index, existing in enumerate(kept)
+                if item.section != existing.section
+                and near_duplicate_similarity(item, existing) >= similarity
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            kept.append(item)
+            continue
+        if _near_duplicate_rank(item) > _near_duplicate_rank(kept[duplicate_index]):
+            kept[duplicate_index] = item
+    return kept
 
 
 def _covered_by_overview(item: NewsItem, overview_points: list[str]) -> bool:

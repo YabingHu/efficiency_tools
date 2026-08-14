@@ -25,6 +25,10 @@ quality:
 dedup:
   enabled: true
   window_days: 7  # 已展示过的条目在这么多天内不再重复出现
+  # 跨来源近似去重宁可漏合并，也不把不同事件误折叠。
+  cross_source:
+    enabled: true
+    similarity: 0.6
 
 http:
   connect_timeout_seconds: 5

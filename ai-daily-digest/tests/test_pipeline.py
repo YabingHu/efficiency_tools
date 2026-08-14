@@ -22,6 +22,45 @@ def test_deduplicate_filters_disabled_unsafe_and_tracking_urls():
     assert [value.id for value in result] == ["first"]
 
 
+def test_collapse_cross_source_keeps_high_quality_near_duplicate():
+    preferred = item(
+        "preferred", section="industry", url="https://example.com/official",
+    )
+    preferred.title = "OpenAI releases GPT-5 reasoning model with benchmark results"
+    preferred.meta["quality_score"] = 90
+    duplicate = item(
+        "duplicate", section="community", url="https://example.com/discussion",
+    )
+    duplicate.title = "OpenAI announces GPT-5 reasoning model and benchmark results"
+    duplicate.meta["quality_score"] = 40
+
+    result = main.collapse_cross_source(
+        {"dedup": {"cross_source": {"enabled": True, "similarity": 0.6}}},
+        [duplicate, preferred],
+    )
+
+    assert [value.id for value in result] == ["preferred"]
+
+
+def test_collapse_cross_source_keeps_unrelated_items_and_can_be_disabled():
+    first = item("first", section="industry", url="https://example.com/first")
+    first.title = "OpenAI releases GPT-5 reasoning model"
+    second = item("second", section="community", url="https://example.com/second")
+    second.title = "Anthropic publishes Claude security policy update"
+
+    enabled = main.collapse_cross_source(
+        {"dedup": {"cross_source": {"enabled": True, "similarity": 0.6}}},
+        [first, second],
+    )
+    disabled = main.collapse_cross_source(
+        {"dedup": {"cross_source": {"enabled": False, "similarity": 0.6}}},
+        [first, second],
+    )
+
+    assert [value.id for value in enabled] == ["first", "second"]
+    assert disabled == [first, second]
+
+
 def test_trim_ignores_disabled_sections_and_ranks_scores(cfg):
     cfg["sections"]["industry"]["limit"] = 1
     cfg["sections"]["media"]["enabled"] = False

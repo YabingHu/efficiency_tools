@@ -26,7 +26,12 @@ from .collectors import (
     rss_news,
 )
 from .config import get_api_key, load_config
-from .editorial import apply_quality_scores, build_today_threads, filter_noise_items
+from .editorial import (
+    apply_quality_scores,
+    build_today_threads,
+    collapse_near_duplicates,
+    filter_noise_items,
+)
 from .renderer import check_template, render, selected_items, write_status
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
@@ -135,6 +140,17 @@ def deduplicate(items: list, enabled_sections: set[str]) -> list:
     return deduped
 
 
+def collapse_cross_source(cfg: dict, items: list) -> list:
+    """按配置折叠跨板块近似条目；关闭开关时保持原列表不变。"""
+    cross_source = cfg.get("dedup", {}).get("cross_source", {})
+    if not cross_source.get("enabled", True):
+        return items
+    return collapse_near_duplicates(
+        items,
+        similarity=cross_source.get("similarity", 0.6),
+    )
+
+
 def trim_items(cfg: dict, items: list) -> list:
     """按板块限制进入 LLM 的条目数，禁用板块不产生调用成本。"""
     trimmed = []
@@ -230,6 +246,11 @@ def main():
     }
     deduped = deduplicate(items, enabled_sections)
     log.info("去重后共 %d 条（原 %d 条）", len(deduped), len(items))
+
+    # 2.1 跨来源近似去重：在预裁剪前及时移除同一事件的重复卡片。
+    before_cross_source = len(deduped)
+    deduped = collapse_cross_source(cfg, deduped)
+    log.info("跨来源近似去重后 %d 条（原 %d 条）", len(deduped), before_cross_source)
 
     # 2.5 跨天去重：滤掉近一周已在早报中展示过的条目（仅当天报告）
     dedup_cfg = cfg.get("dedup", {})
