@@ -100,8 +100,8 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LAST30DAYS_EN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-en/skills/last30days
           LAST30DAYS_CN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-cn/skills/last30days
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XQUIK_API_KEY: ${{ secrets.XQUIK_API_KEY }}
+          X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
+          X_CT0: ${{ secrets.X_CT0 }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           SCRAPECREATORS_API_KEY: ${{ secrets.SCRAPECREATORS_API_KEY }}

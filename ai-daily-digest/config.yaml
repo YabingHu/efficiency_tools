@@ -208,12 +208,23 @@ sources:
       sites:
         - {site: genai, name: GenAI Stack Exchange}
         - {site: ai, name: AI Stack Exchange}
+  # 免费 X 通道：通过 python -m src.x_setup 配置自己的登录会话。
+  x_twscrape:
+    enabled: true
+    accounts: [OpenAI, AnthropicAI, GoogleDeepMind, huggingface, QwenLM, deepseek_ai, MoonshotAI, karpathy]
+    queries: []  # 可追加具体主题；先使用账号名单控制采集范围
+    lookback_hours: 48
+    max_per_query: 5
+    max_fetch: 40
+    timeout_seconds: 120
+    request_timeout_seconds: 15
+    request_delay_seconds: 2
   last30days:
     enabled: true
     english:
       enabled: true
       topic: "LLM OR GPT OR Claude OR Gemini OR DeepSeek"
-      sources: [reddit, x, youtube, bluesky]
+      sources: [reddit, youtube, bluesky]  # X 使用上方免费通道，不调用付费后端
       lookback_days: 2
       timeout_seconds: 150
       max_results: 16

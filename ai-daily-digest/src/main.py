@@ -24,6 +24,7 @@ from .collectors import (
     last30days_sources,
     official_updates,
     rss_news,
+    x_twscrape,
 )
 from .config import get_api_key, load_config
 from .editorial import (
@@ -47,6 +48,7 @@ COLLECTORS = {
     "hackernews": (hackernews.collect, {"community"}),
     "community_sources": (community_sources.collect, {"community"}),
     "last30days": (last30days_sources.collect, {"community", "community_cn"}),
+    "x_twscrape": (x_twscrape.collect, {"community"}),
 }
 
 
@@ -89,6 +91,7 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
         if ((sections | topic_sections) if name == "arxiv" else sections) & enabled
     }
     results = {}
+    cfg["_collector_status"] = {}
     failed = []
     workers = min(cfg.get("collection_workers", 5), max(1, len(selected)))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="collector") as pool:
@@ -113,6 +116,7 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
     if empty:
         log.warning("以下采集器本次没有产出：%s", "、".join(empty))
     diagnostics = {
+        "source_status": dict(cfg["_collector_status"]),
         "collector_counts": {name: len(results.get(name, [])) for name in selected},
         "failed_collectors": sorted(failed),
         "empty_collectors": empty,

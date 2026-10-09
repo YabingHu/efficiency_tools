@@ -1,5 +1,6 @@
 """加载并校验 config.yaml 与 .env。"""
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -188,6 +189,33 @@ def validate_config(cfg: dict) -> None:
         )
         if not isinstance(hackernews.get("require_content", True), bool):
             raise ValueError("sources.hackernews.require_content 必须是布尔值")
+
+    x_source = sources.get("x_twscrape", {})
+    if not isinstance(x_source, dict):
+        raise ValueError("sources.x_twscrape 必须是对象")
+    if not isinstance(x_source.get("enabled", False), bool):
+        raise ValueError("sources.x_twscrape.enabled 必须是布尔值")
+    if x_source.get("enabled", False):
+        accounts = x_source.get("accounts", [])
+        queries = x_source.get("queries", [])
+        if not isinstance(accounts, list) or not all(
+            isinstance(handle, str) and re.fullmatch(r"[A-Za-z0-9_]{1,15}", handle)
+            for handle in accounts
+        ):
+            raise ValueError("sources.x_twscrape.accounts 必须是账号名数组（不带 @）")
+        if not isinstance(queries, list) or not all(
+            isinstance(query, str) and query.strip() and len(query) <= 300
+            for query in queries
+        ):
+            raise ValueError("sources.x_twscrape.queries 必须是非空字符串数组，每条不超过 300 字符")
+        if not 1 <= len(accounts) + len(queries) <= 30:
+            raise ValueError("sources.x_twscrape 必须配置 1~30 个账号或查询")
+        for key, default, maximum in (
+            ("lookback_hours", 48, 168), ("max_per_query", 5, 20),
+            ("max_fetch", 40, 100), ("timeout_seconds", 120, 300),
+            ("request_timeout_seconds", 15, 60), ("request_delay_seconds", 2, 30),
+        ):
+            _positive_int(x_source.get(key, default), f"sources.x_twscrape.{key}", maximum=maximum)
 
     last30days = sources.get("last30days")
     if last30days is None:

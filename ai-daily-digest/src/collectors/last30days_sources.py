@@ -96,6 +96,8 @@ def _child_env() -> dict[str, str]:
     """Keep X credentials available without sharing the digest model key."""
     env = os.environ.copy()
     env.pop("LLM_API_KEY", None)
+    env.pop("X_AUTH_TOKEN", None)
+    env.pop("X_CT0", None)
     executable_dir = str(Path(sys.executable).resolve().parent)
     env["PATH"] = os.pathsep.join(filter(None, [executable_dir, env.get("PATH", "")]))
     env.update({

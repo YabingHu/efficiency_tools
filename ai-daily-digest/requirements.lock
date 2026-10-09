@@ -1,4 +1,12 @@
 # Python 3.12 / Windows 验证环境的完整锁定依赖
+aiosqlite==0.22.1
+fake-useragent==2.2.0
+loguru==0.7.3
+py-machineid==1.0.0
+pyotp==2.10.0
+twscrape==0.20.1
+win32-setctime==1.2.0; sys_platform == "win32"
+winregistry==2.1.5; sys_platform == "win32"
 annotated-types==0.7.0
 anyio==4.14.2
 beautifulsoup4==4.15.0
