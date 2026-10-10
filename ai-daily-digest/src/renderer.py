@@ -1,4 +1,5 @@
 """Jinja2 渲染 HTML 早报。"""
+import hashlib
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .editorial import quality_sort_key, topic_tags
 from .models import NewsItem
-from .utils import take_with_source_limit
+from .utils import canonical_url, safe_http_url, take_with_source_limit
 
 log = logging.getLogger(__name__)
 
@@ -120,11 +121,42 @@ def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
     return selected
 
 
+def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[NewsItem]:
+    """从最终展示条目选必读，先覆盖不同板块，再按质量补足。"""
+    paper_keys = set(_paper_section_keys(cfg))
+    ranked = sorted(selected_items(cfg, items), key=quality_sort_key, reverse=True)
+    candidates, seen = [], set()
+    for item in ranked:
+        if not safe_http_url(item.url):
+            continue
+        url = canonical_url(item.url)
+        if item.id in seen or url in seen:
+            continue
+        seen.update((item.id, url))
+        candidates.append(item)
+    selected, groups = [], set()
+    for item in candidates:
+        group = "papers" if item.section in paper_keys else item.section
+        if group not in groups and len(selected) < limit:
+            selected.append(item)
+            groups.add(group)
+    selected_ids = {item.id for item in selected}
+    selected.extend(item for item in candidates if item.id not in selected_ids)
+    return sorted(selected[:limit], key=quality_sort_key, reverse=True)
+
+
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
            report_date: datetime, *, today_threads: list[dict] | None = None,
            update_latest: bool = True) -> Path:
     env = _environment()
     template = env.get_template("report.html.j2")
+    # 保留旧调用参数兼容历史工具，但不再渲染无文章绑定的要点和主线。
+    for item in items:
+        item.meta["article_id"] = "article-" + hashlib.sha256(item.id.encode()).hexdigest()[:16]
+    must_reads = must_read_items(cfg, items)
+    for item in must_reads:
+        summary = " ".join(item.summary_zh.split())
+        item.meta["brief_summary"] = summary if len(summary) <= 100 else summary[:99] + "…"
 
     paper_keys = _paper_section_keys(cfg)
     paper_key_set = set(paper_keys)
@@ -152,8 +184,7 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
     html = template.render(
         date_str=report_date.strftime("%Y-%m-%d"),
         weekday=WEEKDAYS[report_date.weekday()],
-        overview=overview,
-        today_threads=today_threads or [],
+        must_reads=must_reads,
         sections=sections,
         generated_at=datetime.now(
             ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))

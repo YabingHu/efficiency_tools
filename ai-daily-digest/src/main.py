@@ -29,11 +29,10 @@ from .collectors import (
 from .config import get_api_key, load_config
 from .editorial import (
     apply_quality_scores,
-    build_today_threads,
     collapse_near_duplicates,
     filter_noise_items,
 )
-from .renderer import check_template, render, selected_items, write_status
+from .renderer import check_template, must_read_items, render, selected_items, write_status
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
 from .topics import paper_topic_sections, route_paper_topics
@@ -277,29 +276,22 @@ def main():
     log.info("质量过滤后送入摘要 %d 条（原 %d 条）", len(deduped), before_quality)
     log.info("预裁剪后送入摘要 %d 条", len(deduped))
 
-    # 4. 大模型摘要 + 今日要点/主线
-    overview, thread_titles = [], {}
+    # 4. 生成单条摘要；必读从质量过滤后的最终展示条目选取，不再额外调用模型。
     if args.no_llm:
         log.info("--no-llm：跳过摘要，条目以原文展示")
         apply_no_llm_fallback(deduped)
     else:
         summarizer = Summarizer(cfg)
         summarizer.summarize_items(deduped)
-        overview, thread_titles = summarizer.make_overview(deduped)
     apply_quality_scores(deduped)
     before_post_quality = len(deduped)
     deduped = filter_noise_items(cfg, deduped, stage="post_llm")
     post_quality_dropped = before_post_quality - len(deduped)
     log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
-    today_threads = build_today_threads(
-        selected_items(cfg, deduped),
-        overview_points=overview,
-        thread_titles=thread_titles,
-    )
 
     # 5. 渲染输出
     out_path = render(
-        cfg, deduped, overview, report_date, today_threads=today_threads,
+        cfg, deduped, [], report_date,
         update_latest=is_current,
     )
 
@@ -324,7 +316,7 @@ def main():
                 "pre_llm": pre_quality_dropped,
                 "post_llm": post_quality_dropped,
             },
-            "today_threads": len(today_threads),
+            "must_reads": len(must_read_items(cfg, deduped)),
             **diagnostics,
             "section_counts": {
                 key: sum(item.section == key for item in deduped)

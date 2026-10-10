@@ -1,8 +1,10 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from bs4 import BeautifulSoup
+
 from src.models import NewsItem
-from src.renderer import render, write_status
+from src.renderer import must_read_items, render, write_status
 
 
 def test_render_escapes_content_and_does_not_overwrite_latest_for_history(cfg):
@@ -146,7 +148,7 @@ def test_empty_paper_topics_are_hidden_from_switcher(cfg):
     assert 'id="paper-topic-agent"' not in html
 
 
-def test_render_shows_today_threads_and_quality_badge(cfg):
+def test_render_replaces_legacy_overviews_with_linked_must_reads(cfg):
     for key, section in cfg["sections"].items():
         section["enabled"] = key == "industry"
     news = NewsItem(
@@ -167,10 +169,48 @@ def test_render_shows_today_threads_and_quality_badge(cfg):
     )
     html = path.read_text(encoding="utf-8")
 
-    assert "🧭 今日主线" in html
-    assert "安全治理：OpenAI releases" in html
+    assert "⚡ 今日必读" in html
+    assert "今日主线" not in html
+    assert "今日要点" not in html
+    assert "安全治理：OpenAI releases" not in html
+    soup = BeautifulSoup(html, "html.parser")
+    lead = soup.select_one('.must-read')
+    assert lead.select_one('.must-read-title')["href"] == news.url
+    target = lead.select_one('a[href^="#"]')["href"][1:]
+    assert soup.find(id=target).select_one('.title a')["href"] == news.url
     assert "质量 88" in html
     assert "AI 相关性强" in html
+
+
+def test_must_reads_only_include_selected_articles_and_deduplicate_urls(cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key == "industry"
+    cfg["sections"]["industry"]["limit"] = 2
+    items = [
+        NewsItem("a", "industry", "A", "https://example.com/a", "A", importance=5),
+        NewsItem("b", "industry", "B", "https://example.com/a?utm_source=x", "B", importance=4),
+        NewsItem("c", "industry", "Excluded", "https://example.com/c", "C", importance=3),
+        NewsItem("d", "papers", "Disabled", "https://example.com/d", "D", importance=5),
+    ]
+    assert [item.id for item in must_read_items(cfg, items)] == ["a"]
+
+
+def test_must_reads_cover_sections_and_limit_to_five(cfg):
+    papers = [
+        NewsItem(str(i), "papers", f"Paper {i}", f"https://example.com/p{i}", "HF", importance=5)
+        for i in range(8)
+    ]
+    news = NewsItem("n", "industry", "News", "https://example.com/n", "News", importance=4)
+    reads = must_read_items(cfg, [*papers, news])
+    assert len(reads) == 5
+    assert news in reads
+
+
+def test_empty_report_has_no_must_read_block(cfg):
+    path = render(cfg, [], ["旧要点"], datetime(2026, 7, 18), update_latest=False)
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+    assert not soup.select('.overview, .threads')
+    assert "旧要点" not in soup.get_text()
 
 
 def test_render_shows_topic_tags_for_paper_and_community_cards(cfg):

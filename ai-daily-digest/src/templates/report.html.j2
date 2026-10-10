@@ -64,18 +64,20 @@
     padding: 26px 30px; margin-bottom: 30px; box-shadow: var(--shadow);
   }
   .overview h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 12px; }
-  .overview li { margin-left: 20px; margin-bottom: 8px; font-size: 15px; color: var(--text-soft); }
-  .threads {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-    padding: 24px 26px; margin-bottom: 30px; box-shadow: var(--shadow);
+  .must-read-list { list-style: none; counter-reset: must-read; }
+  .must-read { position: relative; padding: 16px 0 16px 34px; border-top: 1px solid var(--border); }
+  .must-read::before {
+    counter-increment: must-read; content: counter(must-read, decimal-leading-zero);
+    position: absolute; left: 0; top: 17px; font-size: 12px; color: var(--primary);
   }
-  .threads h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 14px; }
-  .thread-list { display: grid; gap: 12px; }
-  .thread {
-    border-left: 3px solid #c9c7ef; padding: 2px 0 2px 13px;
-  }
-  .thread-title { font-size: 15px; font-weight: 650; line-height: 1.5; }
-  .thread-summary { margin-top: 4px; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
+  .must-read-title { color: var(--text); font-size: 16px; font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
+  .must-read-title:hover { color: var(--primary); text-decoration: underline; }
+  .must-read-summary { margin-top: 5px; color: var(--text-soft); font-size: 13px; overflow-wrap: anywhere; }
+  .must-read-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px; font-size: 12px; color: var(--text-light); }
+  .must-read-meta a { color: var(--primary); text-decoration: none; }
+  .must-read-meta a:hover { text-decoration: underline; }
+  .card { scroll-margin-top: 24px; }
+  .card:target { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
   .section-nav {
     display: flex; flex-wrap: wrap; gap: 10px; overflow-x: visible; padding: 2px 2px 0;
     margin-bottom: 38px; scrollbar-width: none;
@@ -182,7 +184,6 @@
     header h1 { font-size: 28px; }
     .container { padding: 0 17px 56px; }
     .overview { padding: 22px 20px; border-radius: 16px; }
-    .threads { padding: 21px 20px; border-radius: 16px; }
     .section-nav {
       flex-wrap: nowrap; overflow-x: auto; padding-bottom: 16px;
       margin-bottom: 28px;
@@ -202,7 +203,7 @@
 </head>
 <body>
 {% macro entry_card(item, extra=false) -%}
-<article class="card{% if extra %} is-extra{% endif %}">
+<article class="card{% if extra %} is-extra{% endif %}" id="{{ item.meta.article_id }}" tabindex="-1">
   <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
   {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
   {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
@@ -234,26 +235,24 @@
 </header>
 <main class="container">
 
-  {% if overview %}
-  <div class="overview">
-    <h2>⚡ 今日要点</h2>
-    <ul>
-      {% for point in overview %}<li>{{ point }}</li>{% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
-  {% if today_threads %}
-  <div class="threads">
-    <h2>🧭 今日主线</h2>
-    <div class="thread-list">
-      {% for thread in today_threads %}
-      <div class="thread">
-        <div class="thread-title">{{ thread.title }}</div>
-        <div class="thread-summary">{{ thread.summary }}</div>
-      </div>
+  {% if must_reads %}
+  <div class="overview" aria-labelledby="must-read-heading">
+    <h2 id="must-read-heading">⚡ 今日必读 · {{ must_reads|length }} 条</h2>
+    <ol class="must-read-list">
+      {% for item in must_reads %}
+      <li class="must-read">
+        <a class="must-read-title" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+        {% if item.meta.brief_summary and item.meta.brief_summary != item.title %}
+        <p class="must-read-summary">{{ item.meta.brief_summary }}</p>
+        {% endif %}
+        <div class="must-read-meta">
+          <span>{{ item.source }}</span>
+          <a href="#{{ item.meta.article_id }}">查看摘要 ↓</a>
+          <a href="{{ item.url }}" target="_blank" rel="noopener">阅读原文 ↗</a>
+        </div>
+      </li>
       {% endfor %}
-    </div>
+    </ol>
   </div>
   {% endif %}
 
@@ -370,6 +369,28 @@
       button.textContent = expanded ? button.dataset.collapseLabel : button.dataset.expandLabel;
     });
   });
+  function revealArticle() {
+    const article = document.getElementById(location.hash.slice(1));
+    if (!article || !article.classList.contains('card')) return;
+    const panel = article.closest('.paper-topic-panel');
+    if (panel) {
+      const tab = document.getElementById(panel.getAttribute('aria-labelledby'));
+      if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+    }
+    const container = panel || article.closest('section');
+    if (article.classList.contains('is-extra') && !container.classList.contains('is-expanded')) {
+      container.querySelector('[data-paper-topic-toggle], [data-section-toggle]')?.click();
+    }
+    article.focus({preventScroll: true});
+    article.scrollIntoView({block: 'start'});
+  }
+  window.addEventListener('hashchange', revealArticle);
+  document.querySelectorAll('.must-read-meta a[href^="#"]').forEach((link) => {
+    link.addEventListener('click', () => {
+      if (location.hash === link.getAttribute('href')) revealArticle();
+    });
+  });
+  revealArticle();
 </script>
 </body>
 </html>
