@@ -7,6 +7,7 @@ import pytest
 from src import main
 from src.collectors import last30days_sources
 from src.collectors import x_twscrape as x
+from src.collectors.x_diagnostics import SafeRequestLog, capture_request_events
 from src.config import validate_config
 from src.x_setup import save_cookies
 
@@ -253,3 +254,55 @@ def test_real_dependency_exposes_safe_diagnostic_state(tmp_path):
     assert result["reason"] == "authentication_failed"
     assert result["account_active"] is False
     assert COOKIES["auth_token"] not in str(result)
+
+
+@pytest.mark.parametrize("message,event", [
+    ("XClIdAccountError: Logged-out X web app", "logged_out_web_page"),
+    ("Rate limited: 429", "rate_limit_response"),
+    ("NetworkError; username=private", "network_retries_exhausted"),
+    ("ConnectError; username=private", "connection_retries_exhausted"),
+    ("Blocked by Cloudflare: 403", "cloudflare_blocked_response"),
+    ("XClIdParseError: unexpected HTML", "web_signing_parse_failed"),
+    ("Unhandled API response code: 503", "unexpected_http_status"),
+    ("Unknown error. Account timeouted for 15 minutes.", "unexpected_request_error"),
+])
+def test_upstream_log_only_retains_fixed_categories(message, event, capsys):
+    recorder = SafeRequestLog()
+    for _ in range(3):
+        recorder.warning(message + str(COOKIES))
+    recorder.error("unrecognized " + str(COOKIES))
+    assert recorder.events == [event]
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+def test_upstream_logger_restored_on_failure():
+    from twscrape import queue_client
+
+    previous = queue_client.logger
+    with pytest.raises(RuntimeError), capture_request_events():
+        assert queue_client.logger is not previous
+        raise RuntimeError("test failure")
+    assert queue_client.logger is previous
+
+
+def test_real_queue_retains_cooldown_cause(x_cfg, tmp_path, monkeypatch, caplog, capsys):
+    from twscrape import queue_client
+    from twscrape.xclid import XClIdAccountError
+
+    async def rejected_request(*args, **kwargs):
+        raise XClIdAccountError("Logged-out X web app " + str(COOKIES))
+
+    api = x._create_api(tmp_path)
+    previous = queue_client.logger
+    monkeypatch.setattr(x, "_create_api", lambda *_: api)
+    monkeypatch.setattr(queue_client.Ctx, "req", rejected_request)
+    assert fetch(x_cfg) == []
+    status = x_cfg["_collector_status"]["x_twscrape"]
+    assert status["errors"] == ["NoAccountError"]
+    assert status["account_diagnostic"]["reason"] == "account_cooldown"
+    assert status["upstream_events"] == ["logged_out_web_page"]
+    assert queue_client.logger is previous
+    captured = capsys.readouterr()
+    for secret in COOKIES.values():
+        assert secret not in str(status) + caplog.text + captured.out + captured.err

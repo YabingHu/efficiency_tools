@@ -12,6 +12,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..models import NewsItem
+from .x_diagnostics import capture_request_events
 
 log = logging.getLogger(__name__)
 COOKIE_FILE = "x-cookies.json"
@@ -145,6 +146,13 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
 
 
 async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> list[NewsItem]:
+    with capture_request_events() as events:
+        return await _fetch_with_diagnostics(cfg, cookies, since, until, events)
+
+
+async def _fetch_with_diagnostics(
+    cfg: dict, cookies: dict, since: datetime, until: datetime, events: list[str],
+) -> list[NewsItem]:
     source = cfg["sources"]["x_twscrape"]
     items, seen = [], set()
     failures = []
@@ -211,6 +219,7 @@ async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> 
         received_items=received, discarded_items=received - len(items), errors=failures,
         **({"failure_stage": stage} if failures else {}),
         **({"account_diagnostic": diagnostic} if diagnostic else {}),
+        **({"upstream_events": list(events)} if events else {}),
     )
     return items
 

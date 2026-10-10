@@ -159,6 +159,13 @@ Actions 的 `Generate daily digest` 步骤搜索 `X 采集诊断`，可查看同
   其他请求失败均可能触发，不能直接断言 Cookie 失效或 GitHub IP 被封。
 - `unknown` / `unavailable`：没有可识别的账号状态线索 / 诊断读取失败。
 
+`upstream_events` 保留触发错误的固定事件类别，补充冷却状态无法提供的原因：
+`logged_out_web_page` 表示签名初始化收到未登录页面（不直接等同于 Cookie 过期）；
+`rate_limit_response` 表示收到限流响应；`network_retries_exhausted` /
+`connection_retries_exhausted` 表示网络重试耗尽；`web_signing_parse_failed` 表示
+页面签名解析失败。HTML/Cloudflare 拒绝、异常 HTTP 状态及未知请求异常也有独立分类。
+这些事件不会包含原始消息，未识别的日志直接丢弃；没有事件不代表没有上游错误。
+
 状态中的 `errors` 仅包含错误类型；账号诊断只输出固定类别、已知错误码、布尔值和时间，
 不回显账号、Cookie、异常正文或原始响应。诊断不会重新登录或清除限流锁。登录失效后，在浏览器
 重新登录，再运行配置命令；云端则更新两个 Secrets。限流时停止本轮请求，不自动
