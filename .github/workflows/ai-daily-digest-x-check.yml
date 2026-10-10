@@ -1,0 +1,64 @@
+name: X Collector Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ai-daily-digest-x-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x-collector-check
+  cancel-in-progress: false
+
+jobs:
+  compare-clients:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        working-directory: ai-daily-digest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-daily-digest/requirements.lock
+      - name: Install pinned clients
+        run: python -m pip install -r requirements.lock curl_cffi==0.16.3
+      - name: Compare X HTTP clients without LLM
+        env:
+          X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
+          X_CT0: ${{ secrets.X_CT0 }}
+          TWS_TELEMETRY: "0"
+        shell: bash
+        run: |
+          for backend in httpx curl; do
+            TWS_HTTP_BACKEND="$backend" python - <<'PY'
+          import json
+          import os
+          import tempfile
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from src.collectors.x_twscrape import collect
+          from src.config import load_config
+
+          cfg = load_config()
+          cfg["sources"]["x_twscrape"].update(
+              enabled=True, accounts=["OpenAI", "AnthropicAI"], queries=[],
+              max_per_query=3, max_fetch=6, request_timeout_seconds=25,
+              timeout_seconds=55, request_delay_seconds=2,
+          )
+          with tempfile.TemporaryDirectory(prefix="x-check-") as private_root:
+              cfg["_root"] = private_root
+              today = datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
+              collect(cfg, today)
+              status = cfg["_collector_status"]["x_twscrape"]
+          print(json.dumps({"backend": os.environ["TWS_HTTP_BACKEND"], **status},
+                           ensure_ascii=False))
+          PY
+          done
