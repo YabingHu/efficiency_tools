@@ -165,6 +165,10 @@ Actions 的 `Generate daily digest` 步骤搜索 `X 采集诊断`，可查看同
 `connection_retries_exhausted` 表示网络重试耗尽；`web_signing_parse_failed` 表示
 页面签名解析失败。HTML/Cloudflare 拒绝、异常 HTTP 状态及未知请求异常也有独立分类。
 这些事件不会包含原始消息，未识别的日志直接丢弃；没有事件不代表没有上游错误。
+`upstream_errors` 进一步提供白名单异常类型、已知出错阶段，以及异常携带的 HTTP
+状态码和接口类别。例如 `HttpStatusError` + `web_page_fetch` + `403` 表示
+初始化网页请求被拒绝，不能误判为搜索限流；`TypeError` 等则提示代码或依赖异常。
+不输出异常消息、调用栈、完整 URL、请求头或响应正文。
 
 状态中的 `errors` 仅包含错误类型；账号诊断只输出固定类别、已知错误码、布尔值和时间，
 不回显账号、Cookie、异常正文或原始响应。诊断不会重新登录或清除限流锁。登录失效后，在浏览器

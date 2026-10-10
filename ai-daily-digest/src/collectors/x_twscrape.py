@@ -12,7 +12,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..models import NewsItem
-from .x_diagnostics import capture_request_events
+from .x_diagnostics import SafeRequestLog, capture_request_events
 
 log = logging.getLogger(__name__)
 COOKIE_FILE = "x-cookies.json"
@@ -146,12 +146,12 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
 
 
 async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> list[NewsItem]:
-    with capture_request_events() as events:
-        return await _fetch_with_diagnostics(cfg, cookies, since, until, events)
+    with capture_request_events() as diagnostic:
+        return await _fetch_with_diagnostics(cfg, cookies, since, until, diagnostic)
 
 
 async def _fetch_with_diagnostics(
-    cfg: dict, cookies: dict, since: datetime, until: datetime, events: list[str],
+    cfg: dict, cookies: dict, since: datetime, until: datetime, request_log: SafeRequestLog,
 ) -> list[NewsItem]:
     source = cfg["sources"]["x_twscrape"]
     items, seen = [], set()
@@ -219,7 +219,8 @@ async def _fetch_with_diagnostics(
         received_items=received, discarded_items=received - len(items), errors=failures,
         **({"failure_stage": stage} if failures else {}),
         **({"account_diagnostic": diagnostic} if diagnostic else {}),
-        **({"upstream_events": list(events)} if events else {}),
+        **({"upstream_events": list(request_log.events)} if request_log.events else {}),
+        **({"upstream_errors": list(request_log.errors)} if request_log.errors else {}),
     )
     return items
 

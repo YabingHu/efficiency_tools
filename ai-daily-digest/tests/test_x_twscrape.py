@@ -7,7 +7,11 @@ import pytest
 from src import main
 from src.collectors import last30days_sources
 from src.collectors import x_twscrape as x
-from src.collectors.x_diagnostics import SafeRequestLog, capture_request_events
+from src.collectors.x_diagnostics import (
+    SafeRequestLog,
+    capture_request_events,
+    safe_exception_details,
+)
 from src.config import validate_config
 from src.x_setup import save_cookies
 
@@ -306,3 +310,46 @@ def test_real_queue_retains_cooldown_cause(x_cfg, tmp_path, monkeypatch, caplog,
     captured = capsys.readouterr()
     for secret in COOKIES.values():
         assert secret not in str(status) + caplog.text + captured.out + captured.err
+
+
+def test_unknown_http_error_retains_status_and_stage(x_cfg, tmp_path, monkeypatch, caplog):
+    import httpx
+    from twscrape import queue_client
+    from twscrape.http import Response
+    from twscrape.xclid import get_tw_page_text
+
+    class RejectedWebClient:
+        async def get(self, url):
+            return Response(httpx.Response(
+                403, text=str(COOKIES),
+                request=httpx.Request("GET", "https://x.com/tesla?token=" + COOKIES["ct0"]),
+            ))
+
+    async def rejected_request(*args, **kwargs):
+        return await get_tw_page_text("https://x.com/tesla", RejectedWebClient())
+
+    api = x._create_api(tmp_path)
+    monkeypatch.setattr(x, "_create_api", lambda *_: api)
+    monkeypatch.setattr(queue_client.Ctx, "req", rejected_request)
+    assert fetch(x_cfg) == []
+    status = x_cfg["_collector_status"]["x_twscrape"]
+    assert status["upstream_events"] == ["unexpected_request_error"]
+    assert status["upstream_errors"] == [{
+        "exception_type": "HttpStatusError", "http_status": 403,
+        "stage": "web_page_fetch", "endpoint": "web_page",
+    }]
+    for secret in COOKIES.values():
+        assert secret not in str(status) + caplog.text
+
+
+def test_non_http_exception_details_never_include_message():
+    recorder = SafeRequestLog()
+    try:
+        raise TypeError(str(COOKIES))
+    except TypeError:
+        recorder.warning("Unknown error. Account timeouted for 15 minutes. " + str(COOKIES))
+    assert recorder.errors == [{"exception_type": "TypeError"}]
+    private_error_type = type(COOKIES["auth_token"], (Exception,), {})
+    assert safe_exception_details(private_error_type(str(COOKIES))) == {
+        "exception_type": "OtherError",
+    }
