@@ -141,11 +141,25 @@ Cookies → `https://x.com`，将 `auth_token` 和 `ct0` 的 **Value 值**分别
 
 `output/run-status.json` 的 `source_status.x_twscrape` 提供状态：
 
-- `ok` / `empty`：查询完成，有结果 / 本次未找到符合时间窗口的帖子。
+- `ok` / `empty`：采集到结果 / 本次未保留帖子；`empty` 本身不能证明登录会话有效。
 - `missing_credentials` / `invalid_credentials`：未配置或配置格式不正确。
 - `partial` / `failed`：超时、限流、登录失效、网络或依赖异常；保留已收到的条目。
 - `disabled` / `historical_unsupported`：关闭来源或历史报告不支持。
 
-状态中的 `errors` 仅包含错误类型，不回显凭据或原始响应。登录失效后，在浏览器
+Actions 的 `Generate daily digest` 步骤搜索 `X 采集诊断`，可查看同一组诊断信息。
+`attempted_queries` / `completed_queries` 是尝试和完成的查询数；`received_items` 是
+采集库返回的条数，`discarded_items` 是因时间、转推、重复或字段校验未保留的条数。
+失败时还会输出 `failure_stage` 和 `account_diagnostic`：
+
+- `authentication_failed`：X 返回认证失败（32）；更新同一次登录的两个 Cookie。
+- `access_denied`：X 返回访问受限（326）；在浏览器检查账号验证或限制提示。
+- `rate_limit_reported`：X 返回限流错误（88）；稍后重试并检查账号状态。
+- `account_inactive`：采集库停用了会话，但未保存可识别的错误原因。
+- `account_cooldown`：临时冷却，附 UTC 截止时间 `cooldown_until`；限流、网络或
+  其他请求失败均可能触发，不能直接断言 Cookie 失效或 GitHub IP 被封。
+- `unknown` / `unavailable`：没有可识别的账号状态线索 / 诊断读取失败。
+
+状态中的 `errors` 仅包含错误类型；账号诊断只输出固定类别、已知错误码、布尔值和时间，
+不回显账号、Cookie、异常正文或原始响应。诊断不会重新登录或清除限流锁。登录失效后，在浏览器
 重新登录，再运行配置命令；云端则更新两个 Secrets。限流时停止本轮请求，不自动
 扩容账号或切换代理。免费通道依赖非官方接口，接口变化可能需要更新依赖。

@@ -15,6 +15,15 @@ from ..models import NewsItem
 
 log = logging.getLogger(__name__)
 COOKIE_FILE = "x-cookies.json"
+DIAGNOSTIC_HINTS = {
+    "authentication_failed": "X 拒绝登录会话；请用同一次登录的两个 Cookie 更新配置。",
+    "access_denied": "X 拒绝访问；请先在浏览器检查账号是否需要验证或受到限制。",
+    "rate_limit_reported": "X 返回限流错误；请稍后重试并在浏览器检查账号状态。",
+    "account_inactive": "采集库已停用会话，但未提供可识别原因；请检查浏览器登录状态。",
+    "account_cooldown": "会话处于临时冷却；可能由限流或请求失败触发，不能据此判断 IP 被封。",
+    "unknown": "账号状态无法确定失败原因；没有可识别的认证错误或有效冷却时间。",
+    "unavailable": "无法读取账号诊断状态；原有采集结果不受影响。",
+}
 
 
 def validate_cookies(value: dict) -> dict[str, str]:
@@ -48,6 +57,47 @@ def _status(cfg: dict, state: str, count: int = 0, **details) -> None:
         "status": state, "count": count, **details,
     }
     log.info("X 免费采集: %s，%d 条", state, count)
+    if details:
+        # details 只由下方白名单字段构造，禁止传入异常正文或 Account 对象。
+        emit = log.warning if state in {"failed", "partial"} else log.info
+        emit("X 采集诊断: %s", json.dumps(details, ensure_ascii=False))
+
+
+async def _account_diagnostics(api) -> dict:
+    """只输出固定类别、布尔值和时间；不输出上游错误正文、账号或 Cookies。"""
+    try:
+        async with asyncio.timeout(2):
+            account = await api.pool.get("daily-digest")
+        active = bool(account.active)
+        reason = "unknown"
+        # twscrape 将已识别的 X 错误保存为 '(code) message'。
+        # 仅匹配已知前缀；不把不受信任的 message 原样写入公开状态文件。
+        error = account.error_msg or ""
+        codes = {
+            "(32) Could not authenticate you": (32, "authentication_failed"),
+            "(326) Authorization: Denied by access control": (326, "access_denied"),
+            "(88) Rate limit exceeded": (88, "rate_limit_reported"),
+        }
+        result = {"account_active": active}
+        if not active:
+            reason = "account_inactive"
+            for prefix, (code, category) in codes.items():
+                if error.startswith(prefix):
+                    result["upstream_error_code"] = code
+                    reason = category
+                    break
+        cooldowns = [
+            value.astimezone(UTC) for value in account.locks.values()
+            if isinstance(value, datetime) and value.tzinfo is not None
+            and value > datetime.now(UTC)
+        ]
+        if cooldowns:
+            result["cooldown_until"] = max(cooldowns).isoformat()
+            if active:
+                reason = "account_cooldown"
+        return {**result, "reason": reason, "hint": DIAGNOSTIC_HINTS[reason]}
+    except Exception:
+        return {"reason": "unavailable", "hint": DIAGNOSTIC_HINTS["unavailable"]}
 
 
 def _create_api(root: Path):
@@ -99,9 +149,13 @@ async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> 
     items, seen = [], set()
     failures = []
     completed = 0
+    attempted = received = 0
+    api = None
+    stage = "initialization"
     try:
         async with asyncio.timeout(source.get("timeout_seconds", 120)):
             api = _create_api(Path(cfg["_root"]))
+            stage = "session_setup"
             await api.pool.add_account_cookies(
                 "daily-digest", f"auth_token={cookies['auth_token']}; ct0={cookies['ct0']}",
             )
@@ -109,6 +163,8 @@ async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> 
             queries = [f"from:{handle}" for handle in source.get("accounts", [])]
             queries += source.get("queries", [])
             for query in queries:
+                stage = "search"
+                attempted += 1
                 # 搜索按 UTC 日期粗筛，返回结果再按精确时间范围过滤。
                 query = (
                     f"({query}) -filter:retweets since:{since:%Y-%m-%d} "
@@ -122,6 +178,7 @@ async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> 
                             examined = 0
                             async for tweet in tweets:
                                 examined += 1
+                                received += 1
                                 item = _to_item(tweet, since, until)
                                 if item and item.id not in seen:
                                     seen.add(item.id)
@@ -145,8 +202,16 @@ async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> 
         failures.append("dependency_missing")
     except Exception as exc:
         failures.append(type(exc).__name__)
+    diagnostic = {}
+    if failures and api is not None:
+        diagnostic = await _account_diagnostics(api)
     state = ("partial" if items else "failed") if failures else ("ok" if items else "empty")
-    _status(cfg, state, len(items), completed_queries=completed, errors=failures)
+    _status(
+        cfg, state, len(items), attempted_queries=attempted, completed_queries=completed,
+        received_items=received, discarded_items=received - len(items), errors=failures,
+        **({"failure_stage": stage} if failures else {}),
+        **({"account_diagnostic": diagnostic} if diagnostic else {}),
+    )
     return items
 
 

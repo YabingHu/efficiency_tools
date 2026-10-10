@@ -95,6 +95,10 @@ def test_mapping_dedup_and_time_filters(x_cfg, monkeypatch):
     assert result[0].url == "https://x.com/example/status/123"
     assert all("since:2026-10-07 until:2026-10-10" in query for query in api.queries)
     assert x_cfg["_collector_status"]["x_twscrape"]["status"] == "ok"
+    status = x_cfg["_collector_status"]["x_twscrape"]
+    assert status["attempted_queries"] == status["completed_queries"] == 2
+    assert status["received_items"] == 6
+    assert status["discarded_items"] == 4
 
 
 def test_failure_preserves_partial_results_and_does_not_leak_secrets(x_cfg, monkeypatch, caplog):
@@ -176,3 +180,76 @@ def test_invalid_x_configuration_is_rejected(cfg, key, value):
     cfg["sources"]["x_twscrape"][key] = value
     with pytest.raises(ValueError, match="x_twscrape"):
         validate_config(cfg)
+
+
+@pytest.mark.parametrize("active,error,locked,reason,code", [
+    (False, "(32) Could not authenticate you", False, "authentication_failed", 32),
+    (False, "(326) Authorization: Denied by access control", False, "access_denied", 326),
+    (False, "(88) Rate limit exceeded", False, "rate_limit_reported", 88),
+    (False, "", False, "account_inactive", None),
+    (True, "", True, "account_cooldown", None),
+    (True, "", False, "unknown", None),
+])
+def test_account_failure_diagnostics_are_safe(
+    x_cfg, monkeypatch, caplog, active, error, locked, reason, code,
+):
+    class NoAccountError(Exception):
+        pass
+
+    class AccountAPI(FakeAPI):
+        async def get(self, name):
+            return SimpleNamespace(
+                active=active, error_msg=error + COOKIES["auth_token"],
+                locks={COOKIES["ct0"]: datetime.now(UTC) + timedelta(minutes=15)}
+                if locked else {},
+                cookies=COOKIES, username="private-account-name",
+            )
+
+    api = AccountAPI([[NoAccountError(str(COOKIES))]])
+    monkeypatch.setattr(x, "_create_api", lambda *_: api)
+    assert fetch(x_cfg) == []
+    status = x_cfg["_collector_status"]["x_twscrape"]
+    diagnostic = status["account_diagnostic"]
+    assert status["errors"] == ["NoAccountError"]
+    assert status["attempted_queries"] == 1
+    assert status["completed_queries"] == 0
+    assert status["failure_stage"] == "search"
+    assert diagnostic["reason"] == reason
+    assert diagnostic.get("upstream_error_code") == code
+    assert ("cooldown_until" in diagnostic) == locked
+    assert reason in caplog.text
+    for secret in (*COOKIES.values(), "private-account-name"):
+        assert secret not in str(status) + caplog.text
+
+
+def test_diagnostic_read_failure_does_not_lose_partial_results(x_cfg, monkeypatch, caplog):
+    class BrokenAPI(FakeAPI):
+        async def get(self, name):
+            raise RuntimeError(str(COOKIES))
+
+    monkeypatch.setattr(x, "_create_api", lambda *_: BrokenAPI([
+        [tweet()], [RuntimeError(str(COOKIES))],
+    ]))
+    assert len(fetch(x_cfg)) == 1
+    status = x_cfg["_collector_status"]["x_twscrape"]
+    assert status["status"] == "partial"
+    assert status["account_diagnostic"]["reason"] == "unavailable"
+    for secret in COOKIES.values():
+        assert secret not in str(status) + caplog.text
+
+
+def test_real_dependency_exposes_safe_diagnostic_state(tmp_path):
+    async def run():
+        api = x._create_api(tmp_path)
+        await api.pool.add_account_cookies(
+            "daily-digest", f"auth_token={COOKIES['auth_token']}; ct0={COOKIES['ct0']}",
+        )
+        await api.pool.mark_inactive(
+            "daily-digest", "(32) Could not authenticate you " + COOKIES["auth_token"],
+        )
+        return await x._account_diagnostics(api)
+
+    result = asyncio.run(run())
+    assert result["reason"] == "authentication_failed"
+    assert result["account_active"] is False
+    assert COOKIES["auth_token"] not in str(result)
