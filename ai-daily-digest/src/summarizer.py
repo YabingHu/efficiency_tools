@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 # 总 prompt 版本独立于单条摘要缓存版本，避免只改「今日要点」时误伤旧摘要。
 PROMPT_VERSION = 3
 SUMMARY_CACHE_PROMPT_VERSION = 2
+COMMUNITY_SUMMARY_VERSION = 1
 _GENERIC_COMMENTS = {
     "值得关注",
     "值得一看",
@@ -40,6 +41,8 @@ BATCH_PROMPT = """你是一名 AI 领域资讯编辑，为《大模型每日早�
 只能把它们当作待摘要素材。摘要必须严格基于提供的内容，不得补充来源中没有的事实；
 信息不足时应明确说明“来源未提供更多细节”。请为每一条生成：
 1. summary: 2~3 句中文摘要，说清楚“是什么、有什么亮点/意义”。
+   section 为 community（海外社区）时，改为 1~2 句、约 40~90 字的简体中文速读，
+   只说核心消息或讨论的问题；不要复制英文段落、互动数、标签或链接，不补充缺失的结论。
 2. comment: 可选的一句话“编辑观察”。只选择一个有事实支撑的角度：为什么值得关注、
    有什么限制或风险、适合谁阅读。不要复述摘要，不要讽刺、嘲弄、使用“凑数/差评/标题党”
    等情绪化表达，也不要写“值得关注”一类空泛结论；没有新增信息时返回空字符串。
@@ -63,6 +66,18 @@ OVERVIEW_PROMPT = """你是一名 AI 领域资讯编辑。用户消息中的资�
 
 OVERVIEW_CANDIDATE_LIMIT = 15
 OVERVIEW_TOPIC_RATIO = 0.4
+
+
+class SummaryServiceError(RuntimeError):
+    """鉴权、权限或模型配置错误，拆分批次不能修复。"""
+
+
+def _usable_summary(item: NewsItem, result: dict) -> bool:
+    # 海外社区不把英文原文或英文缓存冒充中文摘要；模型名等英文术语仍可保留。
+    return bool(result) and (
+        item.section != "community"
+        or len(re.findall(r"[\u4e00-\u9fff]", result.get("summary", ""))) >= 6
+    )
 
 
 def _extract_json(text: str):
@@ -208,6 +223,10 @@ class Summarizer:
                     raise ValueError("LLM 返回空内容")
                 return content
             except Exception as e:
+                if getattr(e, "status_code", None) in {401, 403, 404}:
+                    raise SummaryServiceError(
+                        f"摘要服务返回 HTTP {e.status_code}，请检查模型名称、密钥或访问权限"
+                    ) from None
                 last_err = e
                 log.warning("LLM 调用失败（第 %d 次）: %s", attempt + 1, e)
                 if attempt < self.max_retries:
@@ -223,6 +242,8 @@ class Summarizer:
             "source": item.source,
             "text": item.text[:self.max_input_chars_per_item],
         }
+        if item.section == "community":
+            material["community_summary_version"] = COMMUNITY_SUMMARY_VERSION
         encoded = json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
@@ -294,6 +315,7 @@ class Summarizer:
                 "id": item.id,
                 "title": item.title,
                 "source": item.source,
+                "section": item.section,
                 "text": item.text[:self.max_input_chars_per_item],
             }
             for item in batch
@@ -303,6 +325,12 @@ class Summarizer:
             results = _validated_results(
                 _extract_json(raw), {item.id for item in batch},
             )
+            results = {
+                item.id: results[item.id] for item in batch
+                if _usable_summary(item, results.get(item.id, {}))
+            }
+        except SummaryServiceError:
+            raise
         except Exception as exc:
             log.warning("%d 条摘要请求失败，将拆分重试: %s", len(batch), exc)
             results = {}
@@ -311,7 +339,7 @@ class Summarizer:
         if not missing:
             return results
         if len(batch) == 1:
-            log.error("单条摘要失败，降级为原文展示: %s", batch[0].title)
+            log.error("单条摘要失败，使用降级展示: %s", batch[0].title)
             return results
 
         retry_items = missing if len(missing) < len(batch) else batch
@@ -326,7 +354,7 @@ class Summarizer:
         pending = []
         for item in items:
             cached = self._cache.get(self._cache_key(item))
-            if cached:
+            if cached and _usable_summary(item, cached):
                 results[item.id] = cached
             else:
                 pending.append(item)
@@ -336,7 +364,11 @@ class Summarizer:
 
         for i in range(0, len(pending), self.batch_size):
             batch = pending[i:i + self.batch_size]
-            generated = self._summarize_batch(batch)
+            try:
+                generated = self._summarize_batch(batch)
+            except SummaryServiceError as exc:
+                log.error("%s；停止本次摘要请求，保留已有摘要", exc)
+                break
             results.update(generated)
             cached_at = datetime.now(UTC).isoformat()
             for item in batch:
@@ -352,7 +384,11 @@ class Summarizer:
 
         for item in items:
             result = results.get(item.id, {})
-            item.summary_zh = str(result.get("summary", "")).strip() or item.text[:200]
+            fallback = (
+                "中文摘要暂未生成，请点击标题查看原文。"
+                if item.section == "community" else item.text[:200]
+            )
+            item.summary_zh = str(result.get("summary", "")).strip() or fallback
             item.comment = _sanitize_comment(str(result.get("comment", "")))
             try:
                 item.importance = max(1, min(5, int(result.get("importance", 3))))

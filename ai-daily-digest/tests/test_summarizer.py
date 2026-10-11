@@ -1,3 +1,6 @@
+import json
+from types import SimpleNamespace
+
 import pytest
 
 from src.models import NewsItem
@@ -176,3 +179,78 @@ def test_make_overview_reserves_candidates_for_non_paper_topics(tmp_path):
     assert len(captured["payload"]) <= 15
     assert sum(topic != "论文" for topic in topics) >= 3
     assert topics.count("论文") <= 6
+
+
+def test_community_english_response_is_retried_without_repeating_valid_items(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    items = [
+        NewsItem("a", "community", "Model reports", "https://example.com/a", "X"),
+        NewsItem("b", "community", "Byte models", "https://example.com/b", "Lobsters"),
+    ]
+    calls = []
+
+    def fake_chat(prompt, payload):
+        calls.append([row["id"] for row in payload])
+        assert all(row["section"] == "community" for row in payload)
+        assert "40~90" in prompt
+        return json.dumps([
+            {"id": row["id"], "summary": (
+                "English source snippet" if row["id"] == "b" and len(calls) == 1
+                else "这条讨论介绍模型的新进展。"
+            )} for row in payload
+        ])
+
+    summarizer._chat = fake_chat
+    summarizer.summarize_items(items)
+    assert calls == [["a", "b"], ["b"]]
+    assert all(item.summary_zh == "这条讨论介绍模型的新进展。" for item in items)
+
+
+def test_community_english_cache_is_regenerated(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    item = NewsItem("a", "community", "News", "https://example.com/a", "X")
+    key = summarizer._cache_key(item)
+    summarizer._cache[key] = {"summary": "English cached snippet", "importance": 3}
+    calls = []
+
+    def fake_chat(*args):
+        calls.append(True)
+        return '[{"id":"a","summary":"这是一条新生成的中文摘要。"}]'
+
+    summarizer._chat = fake_chat
+    summarizer.summarize_items([item])
+    assert calls == [True]
+    assert item.summary_zh == "这是一条新生成的中文摘要。"
+
+
+@pytest.mark.parametrize("status", [401, 403, 404])
+def test_service_configuration_errors_stop_retries_and_keep_cache(tmp_path, monkeypatch, status):
+    summarizer = _make_summarizer(tmp_path)
+    summarizer.batch_size = 1
+    summarizer.max_retries = 2
+    summarizer.temperature = 0.3
+    summarizer.max_output_tokens = 4096
+    items = [
+        NewsItem(str(i), "community", "News", f"https://example.com/{i}", "X",
+                 text="English content") for i in range(3)
+    ]
+    summarizer._cache[summarizer._cache_key(items[0])] = {
+        "summary": "这是一条已经缓存的中文摘要。", "importance": 3,
+    }
+    calls = []
+
+    def create(**kwargs):
+        calls.append(True)
+        error = RuntimeError("private upstream response")
+        error.status_code = status
+        raise error
+
+    summarizer.client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=create),
+    ))
+    monkeypatch.setattr("src.summarizer.time.sleep", lambda *_: pytest.fail("不应重试"))
+    summarizer.summarize_items(items)
+    assert calls == [True]
+    assert items[0].summary_zh == "这是一条已经缓存的中文摘要。"
+    assert all(item.summary_zh == "中文摘要暂未生成，请点击标题查看原文。" for item in items[1:])
+    assert len(summarizer._cache) == 1
