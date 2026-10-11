@@ -30,6 +30,43 @@ jobs:
           cache-dependency-path: ai-daily-digest/requirements.lock
       - name: Install pinned clients
         run: python -m pip install -r requirements.lock curl_cffi==0.16.3
+      - name: Probe X bootstrap access
+        env:
+          X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
+          X_CT0: ${{ secrets.X_CT0 }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.parse import urlsplit
+          from curl_cffi.requests import Session
+
+          for authenticated in (False, True):
+              cookies = {"auth_token": os.environ["X_AUTH_TOKEN"],
+                         "ct0": os.environ["X_CT0"]} if authenticated else {}
+              with Session(impersonate="chrome", cookies=cookies) as client:
+                  for path in ("/", "/home", "/tesla"):
+                      result = {"probe": path, "authenticated": authenticated}
+                      try:
+                          response = client.get("https://x.com" + path, timeout=15)
+                          body = response.text.lower()
+                          result.update(
+                              http_status=response.status_code,
+                              response_bytes=len(response.content),
+                              final_host_is_x=urlsplit(response.url).hostname == "x.com",
+                              markers=[name for name, marker in {
+                                  "robots_denied": "robots_denied",
+                                  "access_denied": "access denied",
+                                  "cloudflare_challenge": "cf-chl-",
+                                  "just_a_moment": "just a moment",
+                                  "logged_out_bundle": "entry-client-logged-out",
+                                  "verification_key": "twitter-site-verification",
+                              }.items() if marker in body],
+                          )
+                      except Exception:
+                          result["request_failed"] = True
+                      print(json.dumps(result))
+          PY
       - name: Compare X HTTP clients without LLM
         env:
           X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
