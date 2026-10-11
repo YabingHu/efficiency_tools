@@ -353,3 +353,53 @@ def test_non_http_exception_details_never_include_message():
     assert safe_exception_details(private_error_type(str(COOKIES))) == {
         "exception_type": "OtherError",
     }
+
+
+def test_homepage_bootstrap_rewrites_only_fixed_url_and_restores(monkeypatch):
+    from twscrape import xclid
+
+    seen = []
+    client = object()
+
+    async def get_page(url, passed_client):
+        assert passed_client is client
+        seen.append(url)
+        return "page"
+
+    monkeypatch.setattr(xclid, "get_tw_page_text", get_page)
+    with pytest.raises(RuntimeError, match="test"), x._homepage_bootstrap():
+        for url in ("https://x.com/tesla", "https://x.com/x/migrate"):
+            assert asyncio.run(xclid.get_tw_page_text(url, client)) == "page"
+        raise RuntimeError("test")
+    assert seen == ["https://x.com/", "https://x.com/x/migrate"]
+    assert xclid.get_tw_page_text is get_page
+
+
+def test_real_signing_initialization_uses_homepage(monkeypatch):
+    from twscrape import xclid
+
+    class Client:
+        closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    client = Client()
+    urls = []
+
+    async def get_page(url, passed_client):
+        urls.append(url)
+        assert passed_client is client
+        return "<html></html>"
+
+    async def load_keys(soup, passed_client):
+        return [1, 2, 3], "animation"
+
+    monkeypatch.setattr(xclid, "get_tw_page_text", get_page)
+    monkeypatch.setattr(xclid, "_make_client", lambda **kwargs: client)
+    monkeypatch.setattr(xclid, "load_keys", load_keys)
+    with x._homepage_bootstrap():
+        result = asyncio.run(xclid.XClIdGen.create(cookies=COOKIES))
+    assert urls == ["https://x.com/"]
+    assert result.vk_bytes == [1, 2, 3]
+    assert client.closed

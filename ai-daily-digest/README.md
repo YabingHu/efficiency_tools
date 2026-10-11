@@ -139,6 +139,12 @@ Cookies → `https://x.com`，将 `auth_token` 和 `ct0` 的 **Value 值**分别
 原文、作者、发布时间和互动数进入海外社区板块，复用现有摘要与跨天去重。
 目前不承诺历史日期回放，历史报告会明确跳过 X。
 
+云端使用 X 首页初始化请求签名。固定依赖 `twscrape==0.20.1` 原本使用
+`x.com/tesla`，实测 GitHub Actions 对该路径收到 403，而同会话访问首页并采集成功。
+兼容适配只替换这一初始化地址，不改搜索接口或登录配置；默认 HTTP 客户端即可使用。
+需要单独排查时，运行 Actions 中的 **X Collector Check**，只检查 X，不调用 LLM
+或发布日报；该工作流中的 curl 客户端仅用于兼容性对比。
+
 `output/run-status.json` 的 `source_status.x_twscrape` 提供状态：
 
 - `ok` / `empty`：采集到结果 / 本次未保留帖子；`empty` 本身不能证明登录会话有效。

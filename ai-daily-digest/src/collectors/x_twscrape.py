@@ -6,7 +6,7 @@ import logging
 import math
 import os
 import re
-from contextlib import aclosing
+from contextlib import aclosing, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -145,8 +145,32 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
     )
 
 
+@contextmanager
+def _homepage_bootstrap():
+    """twscrape 0.20.1 用个人主页初始化签名，云端该路径可能返回 403。
+
+    首页提供同一套签名数据；只替换固定初始化 URL，保留后续迁移/资源请求。
+    适配限定在串行 X 采集期间，退出后恢复依赖函数。
+    """
+    try:
+        from twscrape import xclid
+    except ImportError:
+        yield
+        return
+    original = xclid.get_tw_page_text
+
+    async def get_homepage(url, client):
+        return await original("https://x.com/" if url == "https://x.com/tesla" else url, client)
+
+    xclid.get_tw_page_text = get_homepage
+    try:
+        yield
+    finally:
+        xclid.get_tw_page_text = original
+
+
 async def _fetch(cfg: dict, cookies: dict, since: datetime, until: datetime) -> list[NewsItem]:
-    with capture_request_events() as diagnostic:
+    with capture_request_events() as diagnostic, _homepage_bootstrap():
         return await _fetch_with_diagnostics(cfg, cookies, since, until, diagnostic)
 
 
