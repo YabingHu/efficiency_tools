@@ -85,6 +85,13 @@ jobs:
           from src.config import load_config
 
           cfg = load_config()
+          from twscrape import xclid
+          original_get_page = xclid.get_tw_page_text
+          async def get_homepage(url, client):
+              return await original_get_page(
+                  "https://x.com/" if url == "https://x.com/tesla" else url, client,
+              )
+          xclid.get_tw_page_text = get_homepage
           cfg["sources"]["x_twscrape"].update(
               enabled=True, accounts=["OpenAI", "AnthropicAI"], queries=[],
               max_per_query=3, max_fetch=6, request_timeout_seconds=25,
@@ -95,7 +102,8 @@ jobs:
               today = datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
               collect(cfg, today)
               status = cfg["_collector_status"]["x_twscrape"]
-          print(json.dumps({"backend": os.environ["TWS_HTTP_BACKEND"], **status},
+          print(json.dumps({"backend": os.environ["TWS_HTTP_BACKEND"],
+                            "bootstrap": "homepage", **status},
                            ensure_ascii=False))
           PY
           done
