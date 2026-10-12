@@ -211,7 +211,7 @@ sources:
   # 免费 X 通道：通过 python -m src.x_setup 配置自己的登录会话。
   x_twscrape:
     enabled: true
-    accounts: [OpenAI, AnthropicAI, GoogleDeepMind, huggingface, QwenLM, deepseek_ai, MoonshotAI, karpathy]
+    accounts: [OpenAI, AnthropicAI, GoogleDeepMind, huggingface, Alibaba_Qwen, deepseek_ai, Kimi_Moonshot, karpathy, thsottiaux,AIatMeta]
     queries: []  # 可追加具体主题；先使用账号名单控制采集范围
     lookback_hours: 48
     max_per_query: 5
