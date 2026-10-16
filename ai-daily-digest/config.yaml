@@ -102,9 +102,9 @@ sections:
     max_per_source: 2  # 来源充足时单一社区最多占两席，不足时自动补满
   community_cn:
     enabled: true
-    title: "🇨🇳 中文社区热议"
-    subtitle: "微博 · B站 · 知乎 · 百度 · 今日头条"
-    limit: 6
+    title: "🇨🇳 中文开发者实践"
+    subtitle: "实测对比 · 本地部署 · 踩坑排障 · 故障复盘"
+    limit: 3
     max_per_source: 2
 
 # 论文专题分流：标题命中关键词的 arXiv 论文归入专属板块（section 需对应 sections key）。
@@ -243,11 +243,16 @@ sources:
       max_per_source: 8
     chinese:
       enabled: true
-      topic: "大模型 人工智能 AI 智能体"
+      topic: "大模型 开发实践"
+      queries:  # 独立搜索，避免将所有泛词拼成一个查询；最多 3 个，并发执行。
+        - "Claude Code 实测"
+        - "Qwen 本地部署"
+        - "智能体 踩坑"
+      practice_only: true
+      content_fetch_limit: 4  # 对有实践线索但缺少正文的候选补读原文，失败仍按质量门槛过滤。
       sources: [weibo, bilibili, zhihu, baidu, toutiao]
       lookback_days: 2
-      timeout_seconds: 150
-      request_timeout_seconds: 20
+      timeout_seconds: 150  # 每个引擎的全局超时；父进程额外保留 10 秒退出缓冲。
   official_updates:
     enabled: true
     lookback_hours: 168

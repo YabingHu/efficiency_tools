@@ -15,8 +15,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 
+from ..content_extractor import extract_text_from_url
 from ..editorial import has_community_ai_context
 from ..models import NewsItem
+from ..utils import canonical_url, safe_http_url
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ CN_SOURCE_LABELS = {
     "zhihu": "知乎",
     "douyin": "抖音",
     "wechat": "微信",
-    "baidu": "百度热搜",
+    "baidu": "百度搜索",
     "toutiao": "今日头条",
 }
 
@@ -52,6 +54,22 @@ _CN_TRANSACTION_PATTERN = re.compile(
     r"报名(?:入口|通道|截止)|付费(?:课|课程|专栏)|"
     r"训练营|实战课|系统课|精品课|课程购买|购课"
 )
+_CN_PRACTICE_PATTERN = re.compile(
+    r"实测|评测|对比|部署|踩坑|复盘|排查|故障|调优|本地运行|实践|benchmark", re.I,
+)
+_CN_EVIDENCE_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:GB|GiB|MB|ms|秒|分钟|小时|%|tokens?|t/s)|"
+    r"配置|命令|日志|报错|修复|复现|测试集|数据集|显存|吞吐|延迟|"
+    r"Docker|vLLM|Ollama|SGLang|ComfyUI|GPU|CUDA|pip install", re.I,
+)
+
+
+def _is_chinese_practice(title: str, text: str) -> bool:
+    """实践选题须有实测/排障等信号，并在原始素材中提供具体依据。"""
+    return bool(
+        _CN_PRACTICE_PATTERN.search(f"{title} {text}")
+        and _CN_EVIDENCE_PATTERN.search(text)
+    )
 
 
 def _is_chinese_community_ad(title: str, summary: str, url: str) -> bool:
@@ -127,6 +145,29 @@ def _decode_json(stdout: str) -> dict:
             return {}
 
 
+def _platform_errors(stderr: str) -> dict[str, list[str]]:
+    """上游部分模块只在 stderr 报错；仅保留已知平台的固定诊断类别。"""
+    errors = {}
+    for source, label in CN_SOURCE_LABELS.items():
+        categories = set()
+        for line in stderr.splitlines():
+            if not line.startswith(f"[{label}]") and not (
+                source == "baidu" and line.startswith("[百度]")
+            ):
+                continue
+            if not re.search(r"失败|安全验证|验证码|timed out|TimeoutError|HTTP Error", line):
+                continue
+            code = re.search(r"\b(401|403|429|5\d\d)\b", line)
+            categories.add(
+                f"http_{code[1]}" if code else
+                "timeout" if re.search(r"超时|timed out|TimeoutError", line) else
+                "request_failed"
+            )
+        if categories:
+            errors[source] = sorted(categories)
+    return errors
+
+
 def _run_engine(script: Path, args: list[str], timeout: int) -> dict:
     command = [sys.executable, str(script), *args]
     try:
@@ -143,19 +184,22 @@ def _run_engine(script: Path, args: list[str], timeout: int) -> dict:
         )
     except subprocess.TimeoutExpired:
         log.warning("%s 采集超时（%ds），本次跳过", script.parent.parent.name, timeout)
-        return {}
+        return {"_engine_status": "timeout"}
     except OSError as exc:
         log.warning("无法启动 %s: %s", script, exc)
-        return {}
+        return {"_engine_status": "start_failed"}
 
     if result.returncode:
-        detail = (result.stderr or result.stdout).strip()[-1200:]
-        log.warning("%s 返回 %d：%s", script.parent.parent.name, result.returncode, detail)
-        return {}
+        log.warning("%s 返回 %d", script.parent.parent.name, result.returncode)
+        timed_out = "[超时] 全局超时" in result.stderr
+        return {"_engine_status": "timeout" if timed_out else "failed"}
     payload = _decode_json(result.stdout)
     if not payload:
         log.warning("%s 未返回有效 JSON", script.parent.parent.name)
-    return payload
+    return {
+        **payload, "_engine_status": "ok" if payload else "invalid_json",
+        "_engine_platform_errors": _platform_errors(result.stderr),
+    }
 
 
 def _numeric(value) -> float:
@@ -192,7 +236,7 @@ def _engagement(item: dict) -> tuple[float, int, int]:
 
 def _rank_score(item: dict) -> tuple[float, int, int]:
     engagement, points, comments = _engagement(item)
-    relevance = _numeric(item.get("relevance_score"))
+    relevance = _numeric(item.get("relevance_score", item.get("relevance")))
     if relevance <= 1:
         relevance *= 100
     return relevance + min(40.0, math.log1p(engagement) * 5), points, comments
@@ -254,24 +298,93 @@ def _platform_rows(payload: dict, platform: str) -> list[dict]:
     return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
 
 
+def _chinese_material(raw: dict) -> tuple[str, str]:
+    title = _first_text(raw, ("title", "name"))
+    body = _first_text(raw, (
+        "summary", "description", "abstract", "desc", "excerpt", "snippet", "text",
+    ))
+    if not title:
+        title = body[:60] + ("…" if len(body) > 60 else "")
+    return title, body or title
+
+
+def _supplement_chinese_content(
+    payloads: list[dict], sources: set[str], cfg: dict, *, report_date: date | None = None,
+) -> dict:
+    """为有实践选题但素材薄弱的候选补读公开原文，同一链接只请求一次。"""
+    candidates = {}
+    source_cfg = cfg["sources"]["last30days"]["chinese"]
+    for payload in payloads:
+        for source in sorted(sources):
+            for raw in _platform_rows(payload, source):
+                title, text = _chinese_material(raw)
+                url = _first_text(raw, ("url", "link", "source_url"))
+                published = raw.get("published_at") or raw.get("date")
+                if report_date and isinstance(published, str):
+                    try:
+                        published_date = date.fromisoformat(published[:10])
+                    except ValueError:
+                        published_date = None
+                    if published_date and not (
+                        report_date - timedelta(days=source_cfg.get("lookback_days", 2))
+                        <= published_date <= report_date
+                    ):
+                        continue
+                if (
+                    not safe_http_url(url) or not has_community_ai_context(title, text)
+                    or not _CN_PRACTICE_PATTERN.search(f"{title} {text}")
+                    or _is_chinese_community_ad(title, text, url)
+                    or (
+                        text != title and len(re.sub(r"\s+", "", text)) >= 60
+                        and _is_chinese_practice(title, text)
+                    )
+                ):
+                    continue
+                candidates.setdefault(canonical_url(url), []).append(raw)
+    selected = list(candidates.items())[:source_cfg.get("content_fetch_limit", 4)]
+    # 使用独立超时配置，避免改变其他采集器共享的 HTTP 参数。
+    fetch_cfg = {**cfg, "http": {
+        **cfg.get("http", {}), "connect_timeout_seconds": 5, "read_timeout_seconds": 10,
+    }}
+    succeeded = 0
+    if selected:
+        with ThreadPoolExecutor(max_workers=min(3, len(selected))) as pool:
+            bodies = pool.map(
+                lambda entry: extract_text_from_url(entry[0], fetch_cfg, min_chars=60), selected,
+            )
+            for (_, rows), body in zip(selected, bodies, strict=True):
+                if not body:
+                    continue
+                succeeded += 1
+                for raw in rows:
+                    _, original = _chinese_material(raw)
+                    raw["summary"] = original + "\n" + body[:5000]
+    return {"attempted": len(selected), "succeeded": succeeded}
+
+
 def _chinese_items(
     payload: dict, allowed_sources: set[str], *, report_date: date | None = None,
-    lookback_days: int = 2,
+    lookback_days: int = 2, practice_only: bool = False,
+    diagnostics: dict | None = None,
 ) -> list[NewsItem]:
     items = []
-    for platform in allowed_sources:
+    for platform in sorted(allowed_sources):
+        stats = {"received": 0, "accepted": 0, "filtered": {}}
+        if diagnostics is not None:
+            diagnostics[platform] = stats
         for raw in _platform_rows(payload, platform):
+            stats["received"] += 1
             url = _first_text(raw, ("url", "link", "source_url"))
-            title = _first_text(raw, ("title", "text", "name", "summary"))
-            if not url or not title:
+            title, summary = _chinese_material(raw)
+            if not safe_http_url(url) or not title:
+                stats["filtered"]["invalid_fields"] = stats["filtered"].get("invalid_fields", 0) + 1
                 continue
-            summary = _first_text(
-                raw, ("summary", "description", "desc", "excerpt", "snippet", "text")
-            ) or title
             if _is_chinese_community_ad(title, summary, url):
+                stats["filtered"]["advertisement"] = stats["filtered"].get("advertisement", 0) + 1
                 log.info("过滤中文社区广告：[%s] %s", platform, title[:100])
                 continue
             if not has_community_ai_context(title, summary):
+                stats["filtered"]["irrelevant"] = stats["filtered"].get("irrelevant", 0) + 1
                 log.info("过滤中文社区无关内容：[%s] %s", platform, title[:100])
                 continue
             published = raw.get("published_at") or raw.get("date") or ""
@@ -284,10 +397,15 @@ def _chinese_items(
                     report_date - timedelta(days=lookback_days) <= published_date <= report_date
                 ):
                     log.info("过滤中文社区过期内容：[%s] %s", platform, title[:100])
+                    stats["filtered"]["out_of_range"] = stats["filtered"].get("out_of_range", 0) + 1
                     continue
+            if practice_only and not _is_chinese_practice(title, summary):
+                stats["filtered"]["not_practice"] = stats["filtered"].get("not_practice", 0) + 1
+                continue
             score, points, comments = _rank_score(raw)
             items.append(NewsItem(
-                id=_stable_id(f"last30days-cn-{platform}", raw, url),
+                # 上游的 WB1/ZH1 等 ID 会在每次查询重置；以链接生成跨查询稳定 ID。
+                id=_stable_id(f"last30days-cn-{platform}", {}, canonical_url(url)),
                 section="community_cn",
                 title=title[:240],
                 url=url,
@@ -299,8 +417,12 @@ def _chinese_items(
                     "comments": comments,
                     "discussion_url": url,
                     "published_at": published,
+                    "author": _first_text(raw, (
+                        "author", "author_handle", "channel_name", "source_name",
+                    )),
                 },
             ))
+            stats["accepted"] += 1
     return items
 
 
@@ -350,28 +472,95 @@ def _collect_english(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]
 
 
 def _collect_chinese(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]:
-    script = _script_path(cfg, "cn")
-    if script is None:
-        log.warning("未找到 last30days 中文 skill，跳过中文社区扩展来源")
-        return []
+    statuses = cfg.setdefault("_collector_status", {})
     sources = {str(value).lower() for value in source_cfg.get(
         "sources", ["weibo", "bilibili", "zhihu", "baidu", "toutiao"]
     )}
-    topic = source_cfg.get("topic", "大模型 人工智能 AI")
-    payload = _run_engine(script, [
-        topic,
-        "--emit", "json",
-        "--quick",
-        "--days", str(source_cfg.get("lookback_days", 2)),
-        "--as-of", report_date.isoformat(),
-        "--timeout", str(source_cfg.get("request_timeout_seconds", 20)),
-        "--search", ",".join(sorted(sources)),
-        "--no-cache",
-    ], source_cfg.get("timeout_seconds", 150))
-    return _chinese_items(
-        payload, sources, report_date=report_date,
-        lookback_days=source_cfg.get("lookback_days", 2),
-    )
+    script = _script_path(cfg, "cn")
+    if script is None:
+        log.warning("未找到 last30days 中文 skill，跳过中文社区扩展来源")
+        statuses["last30days_chinese"] = {
+            "status": "missing_engine", "count": 0,
+            "platforms": {source: {"status": "not_attempted"} for source in sorted(sources)},
+        }
+        return []
+    queries = source_cfg.get("queries") or [source_cfg.get("topic", "大模型 开发实践")]
+    timeout = source_cfg.get("timeout_seconds", 150)
+
+    def search(query):
+        return _run_engine(script, [
+            query, "--emit", "json", "--quick",
+            "--days", str(source_cfg.get("lookback_days", 2)),
+            "--as-of", report_date.isoformat(),
+            "--timeout", str(timeout),  # 上游参数是整个引擎的全局超时。
+            "--search", ",".join(sorted(sources)), "--no-cache",
+        ], timeout + 10)  # 留出引擎退出与结果输出的时间。
+
+    with ThreadPoolExecutor(
+        max_workers=min(3, len(queries)), thread_name_prefix="cn-query",
+    ) as pool:
+        payloads = list(pool.map(search, queries))
+    content_fetch = _supplement_chinese_content(payloads, sources, cfg, report_date=report_date)
+    platforms = {
+        source: {"received": 0, "accepted": 0, "filtered": {}, "query_statuses": [], "errors": []}
+        for source in sorted(sources)
+    }
+    candidates = []
+    for payload in payloads:
+        diagnostics = {}
+        candidates.extend(_chinese_items(
+            payload, sources, report_date=report_date,
+            lookback_days=source_cfg.get("lookback_days", 2),
+            practice_only=source_cfg.get("practice_only", True), diagnostics=diagnostics,
+        ))
+        engine_status = payload.get("_engine_status", "ok" if payload else "invalid_json")
+        for source, stats in diagnostics.items():
+            target = platforms[source]
+            target["received"] += stats["received"]
+            target["accepted"] += stats["accepted"]
+            for reason, count in stats["filtered"].items():
+                target["filtered"][reason] = target["filtered"].get(reason, 0) + count
+            if engine_status != "ok":
+                state = engine_status
+            elif (
+                payload.get(f"{source}_error")
+                or payload.get("_engine_platform_errors", {}).get(source)
+            ):
+                state = "partial" if stats["received"] else "failed"
+            elif source not in payload:
+                state = "not_reported"
+            else:
+                state = "ok" if stats["received"] else "empty"
+            target["query_statuses"].append(state)
+            target["errors"] = sorted(set(
+                target["errors"] + payload.get("_engine_platform_errors", {}).get(source, [])
+            ))
+    for stats in platforms.values():
+        states = stats["query_statuses"]
+        good = any(state in {"ok", "empty"} for state in states)
+        bad = any(state not in {"ok", "empty"} for state in states)
+        stats["status"] = (
+            "partial" if bad and (good or stats["received"]) else
+            "failed" if bad else "ok" if stats["received"] else "empty"
+        )
+    # 同一链接可能命中多个查询；保留素材更完整的版本，顺序与并发完成先后无关。
+    unique = {}
+    for item in candidates:
+        key = canonical_url(item.url)
+        if key not in unique or len(item.text) > len(unique[key].text):
+            unique[key] = item
+    items = list(unique.values())
+    states = {stats["status"] for stats in platforms.values()}
+    state = "partial" if states & {"failed", "partial"} else "ok" if items else "empty"
+    if states == {"failed"}:
+        state = "failed"
+    statuses["last30days_chinese"] = {
+        "status": state, "count": len(items), "query_count": len(queries),
+        "duplicate_items": len(candidates) - len(items), "platforms": platforms,
+        "content_fetch": content_fetch,
+    }
+    log.info("中文开发者实践：%s，%d 条候选，各平台诊断：%s", state, len(items), platforms)
+    return items
 
 
 def collect(cfg: dict, report_date) -> list[NewsItem]:

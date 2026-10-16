@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 PROMPT_VERSION = 3
 SUMMARY_CACHE_PROMPT_VERSION = 3
 COMMUNITY_SUMMARY_VERSION = 1
+CHINESE_PRACTICE_SUMMARY_VERSION = 1
 _GENERIC_COMMENTS = {
     "值得关注",
     "值得一看",
@@ -48,6 +49,8 @@ BATCH_PROMPT = """你是一名 AI 领域资讯编辑，为《大模型每日早�
    缺少对比或验证时不得写成已证实的效果，不得把旧 README 功能误写为本次 Release 新增。
    section 为 community（海外社区）时，改为 1~2 句、约 40~90 字的简体中文速读，
    只说核心消息或讨论的问题；不要复制英文段落、互动数、标签或链接，不补充缺失的结论。
+   section 为 community_cn（中文开发者实践）时，用 2~3 句说清实测/排障对象、具体做法、
+   观察到的结果和适用条件；仅引用素材中的配置、硬件或指标，不把教程标题当作已验证的效果。
 2. comment: 可选的一句话“编辑观察”。只选择一个有事实支撑的角度：为什么值得关注、
    有什么限制或风险、适合谁阅读。不要复述摘要，不要讽刺、嘲弄、使用“凑数/差评/标题党”
    等情绪化表达，也不要写“值得关注”一类空泛结论；没有新增信息时返回空字符串。
@@ -249,6 +252,8 @@ class Summarizer:
         }
         if item.section == "community":
             material["community_summary_version"] = COMMUNITY_SUMMARY_VERSION
+        if item.section == "community_cn":
+            material["chinese_practice_summary_version"] = CHINESE_PRACTICE_SUMMARY_VERSION
         encoded = json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 

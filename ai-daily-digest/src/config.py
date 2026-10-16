@@ -284,10 +284,22 @@ def validate_config(cfg: dict) -> None:
                 maximum=50,
             )
         else:
+            queries = language_cfg.get("queries", [])
+            if (
+                not isinstance(queries, list) or len(queries) > 3
+                or not all(
+                    isinstance(query, str) and query.strip() and len(query) <= 120
+                    for query in queries
+                )
+            ):
+                raise ValueError(
+                    f"{path}.queries 必须是最多 3 条非空查询的数组，每条不超过 120 字符"
+                )
+            if not isinstance(language_cfg.get("practice_only", True), bool):
+                raise ValueError(f"{path}.practice_only 必须是布尔值")
             _positive_int(
-                language_cfg.get("request_timeout_seconds", 20),
-                f"{path}.request_timeout_seconds",
-                maximum=120,
+                language_cfg.get("content_fetch_limit", 4),
+                f"{path}.content_fetch_limit", maximum=12,
             )
 
     official_updates = sources.get("official_updates", {})

@@ -191,7 +191,10 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
                     "topics": topics,
                 })
             continue
-        sections.append(_render_section(cfg, key, sec_cfg, items))
+        section = _render_section(cfg, key, sec_cfg, items)
+        if key == "community_cn" and not section["entries"]:
+            continue
+        sections.append(section)
 
     html = template.render(
         date_str=report_date.strftime("%Y-%m-%d"),

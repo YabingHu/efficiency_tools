@@ -86,6 +86,24 @@ Hacker News 自帖会直接使用帖子正文；高热外链会在通过公网 U
 门槛由 `must_read` 配置。论文摘要按问题、关键方法与结果、适用限制组织，
 保留实验条件并明确归因；GitHub 的性能宣称同样保留项目方口径。
 
+中文板块为「中文开发者实践」，最多展示 3 条，暂无合格内容时隐藏板块及导航入口。
+默认分别搜索 Claude Code 实测、Qwen 本地部署与智能体踩坑；可修改
+`sources.last30days.chinese.queries`（最多 3 条，独立并发查询），或不配置查询数组而
+回退到 `topic`。`practice_only` 默认开启：原始内容需包含实测、对比、部署或排障信号，
+并提供配置、日志、硬件、耗时等具体线索，单纯概念科普和只有标题的内容不会入选。
+有实践选题但素材薄弱的候选会补读公开原文，最多补读 `content_fetch_limit` 个链接
+（默认 4 个、最多 3 个并发，连接/读取超时为 5/10 秒），沿用公网地址和响应大小限制。
+
+中文引擎的 `timeout_seconds` 控制整个搜索进程的全局时限，父进程另留 10 秒退出缓冲；
+旧 `request_timeout_seconds` 不再传给上游的全局超时参数。适配器保留头条 `abstract`、
+知乎 `excerpt`、B站 `description` 和微博 `text`，并按链接去重，避免上游查询内序号
+在多查询之间冲突。`run-status.json` 的 `source_status.last30days_chinese` 提供
+每个平台的原始条数、适配后条数、广告/无关/过期/非实践过滤数量及每次查询状态。
+其中 `accepted` 尚未经过流水线的素材长度、质量与跨天去重，最终展示数量以页面为准；
+`missing_engine`、`failed`、`partial` 与正常无结果的 `empty` 分别记录，不回显上游错误正文。
+`content_fetch` 记录补读尝试与成功数；平台 `errors` 只保留 HTTP 状态码等固定类别，
+补充上游仅在 stderr 报错的情况。`empty` 表示引擎未返回候选，不能证明平台访问正常。
+
 ## Windows 定时任务
 
 ```powershell

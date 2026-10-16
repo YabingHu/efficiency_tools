@@ -252,6 +252,21 @@ def test_empty_report_has_no_must_read_block(cfg):
     assert "旧要点" not in soup.get_text()
 
 
+def test_empty_chinese_practice_section_and_navigation_are_hidden(cfg):
+    path = render(cfg, [], [], datetime(2026, 10, 17), update_latest=False)
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+    assert not soup.select('#section-community_cn, a[href="#section-community_cn"]')
+
+
+def test_chinese_practice_shows_at_most_three_items(cfg):
+    items = [must_read_candidate(f"cn-{i}", "community_cn") for i in range(5)]
+    path = render(cfg, items, [], datetime(2026, 10, 17), update_latest=False)
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+    section = soup.select_one('#section-community_cn')
+    assert "中文开发者实践" in section.get_text()
+    assert len(section.select('article')) == 3
+
+
 def test_render_shows_topic_tags_for_paper_and_community_cards(cfg):
     for key, section in cfg["sections"].items():
         section["enabled"] = key in {"papers", "community"}

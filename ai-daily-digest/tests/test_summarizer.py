@@ -110,6 +110,16 @@ def test_summary_cache_is_reused_across_runs(tmp_path):
     assert second_item.meta["summary_status"] == "generated"
 
 
+def test_practice_prompt_refresh_invalidates_only_chinese_practice_cache(tmp_path, monkeypatch):
+    summarizer = _make_summarizer(tmp_path)
+    chinese = NewsItem("cn", "community_cn", "Qwen 部署", "https://example.com/cn", "知乎")
+    paper = NewsItem("paper", "papers", "LLM paper", "https://example.com/paper", "arXiv")
+    chinese_key, paper_key = summarizer._cache_key(chinese), summarizer._cache_key(paper)
+    monkeypatch.setattr("src.summarizer.CHINESE_PRACTICE_SUMMARY_VERSION", 2)
+    assert summarizer._cache_key(chinese) != chinese_key
+    assert summarizer._cache_key(paper) == paper_key
+
+
 def test_make_overview_returns_points_and_content_based_thread_titles(tmp_path):
     summarizer = _make_summarizer(tmp_path)
     item = NewsItem(
