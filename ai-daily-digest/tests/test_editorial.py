@@ -1,12 +1,50 @@
+import pytest
+
 from src.editorial import (
     apply_quality_scores,
     build_today_threads,
     filter_noise_items,
+    has_community_ai_context,
     primary_topic,
     quality_sort_key,
     score_item_quality,
 )
 from src.models import NewsItem
+
+
+@pytest.mark.parametrize("stage", ["pre_llm", "post_llm"])
+@pytest.mark.parametrize("section", ["community", "community_cn"])
+def test_community_relevance_cannot_be_overridden_by_heat_or_section_floor(stage, section):
+    candidate = item(
+        "oracle", section=section,
+        title="【大】的甲骨文金文篆文字形演变含义 - 甲骨文研究网",
+        text="发布于2023年3月19日，研究汉字的字形演变。", score=100000,
+    )
+    candidate.importance = 5
+    candidate.source = "AI 社区"
+    candidate.summary_zh = "人工智能相关研究" * 20
+    cfg = {"quality": {"min_items_per_section": 1, "min_score": {"default": 0}}}
+    assert filter_noise_items(cfg, [candidate], stage=stage) == []
+
+
+@pytest.mark.parametrize("title,text,expected", [
+    ("Daily news", "He said the model railway is ready.", False),
+    ("字形演变", "@OpenAI https://example.com/ai/llm", False),
+    ("字形演变", "Lobsters AI 社区：5 分，0 条评论。标签：ai。", False),
+    ("人工智能辅助甲骨文识别", "研究字形演变", True),
+    ("LLMs for coding", "", True),
+    ("GPT4 release", "", True),
+    ("DeepSeek-V4 update", "", True),
+])
+def test_community_relevance_uses_content_and_word_boundaries(title, text, expected):
+    assert has_community_ai_context(title, text) is expected
+
+
+def test_community_does_not_fill_with_items_below_quality_threshold():
+    candidate = item("low", section="community_cn", title="AI", text="")
+    candidate.importance = 1
+    cfg = {"quality": {"min_items_per_section": 1, "min_score": {"default": 90}}}
+    assert filter_noise_items(cfg, [candidate], stage="post_llm") == []
 
 
 def item(item_id, section="github", title="LLM agent framework", text=None, score=0):

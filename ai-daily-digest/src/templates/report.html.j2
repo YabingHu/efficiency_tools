@@ -328,7 +328,7 @@
     </div>
     {% endif %}
     {% else %}
-      <div class="empty">今日该板块暂无内容（来源不可用或无更新）</div>
+      <div class="empty">{% if section.key in ['community', 'community_cn'] %}今日暂无符合筛选条件的 AI 社区内容{% else %}今日该板块暂无内容（来源不可用或无更新）{% endif %}</div>
     {% endif %}
     {% endif %}
   </section>

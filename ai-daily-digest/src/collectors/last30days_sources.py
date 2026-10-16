@@ -12,8 +12,10 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
 from pathlib import Path
 
+from ..editorial import has_community_ai_context
 from ..models import NewsItem
 
 log = logging.getLogger(__name__)
@@ -252,7 +254,10 @@ def _platform_rows(payload: dict, platform: str) -> list[dict]:
     return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
 
 
-def _chinese_items(payload: dict, allowed_sources: set[str]) -> list[NewsItem]:
+def _chinese_items(
+    payload: dict, allowed_sources: set[str], *, report_date: date | None = None,
+    lookback_days: int = 2,
+) -> list[NewsItem]:
     items = []
     for platform in allowed_sources:
         for raw in _platform_rows(payload, platform):
@@ -266,6 +271,20 @@ def _chinese_items(payload: dict, allowed_sources: set[str]) -> list[NewsItem]:
             if _is_chinese_community_ad(title, summary, url):
                 log.info("过滤中文社区广告：[%s] %s", platform, title[:100])
                 continue
+            if not has_community_ai_context(title, summary):
+                log.info("过滤中文社区无关内容：[%s] %s", platform, title[:100])
+                continue
+            published = raw.get("published_at") or raw.get("date") or ""
+            if report_date and isinstance(published, str):
+                try:
+                    published_date = date.fromisoformat(published[:10])
+                except ValueError:
+                    published_date = None
+                if published_date and not (
+                    report_date - timedelta(days=lookback_days) <= published_date <= report_date
+                ):
+                    log.info("过滤中文社区过期内容：[%s] %s", platform, title[:100])
+                    continue
             score, points, comments = _rank_score(raw)
             items.append(NewsItem(
                 id=_stable_id(f"last30days-cn-{platform}", raw, url),
@@ -279,7 +298,7 @@ def _chinese_items(payload: dict, allowed_sources: set[str]) -> list[NewsItem]:
                     "points": points,
                     "comments": comments,
                     "discussion_url": url,
-                    "published_at": raw.get("published_at") or raw.get("date") or "",
+                    "published_at": published,
                 },
             ))
     return items
@@ -349,7 +368,10 @@ def _collect_chinese(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]
         "--search", ",".join(sorted(sources)),
         "--no-cache",
     ], source_cfg.get("timeout_seconds", 150))
-    return _chinese_items(payload, sources)
+    return _chinese_items(
+        payload, sources, report_date=report_date,
+        lookback_days=source_cfg.get("lookback_days", 2),
+    )
 
 
 def collect(cfg: dict, report_date) -> list[NewsItem]:

@@ -5,6 +5,26 @@ from src.collectors import last30days_sources
 from src.models import NewsItem
 
 
+def test_chinese_search_drops_irrelevant_and_known_outdated_results():
+    rows = [
+        {"id": "oracle", "title": "【大】的甲骨文金文篆文字形演变含义"},
+        {"id": "old", "title": "人工智能研究", "date": "2023-03-19"},
+        {"id": "future", "title": "人工智能研究", "date": "2026-10-13"},
+        {"id": "recent", "title": "大模型新进展", "published_at": "2026-10-11T12:00:00Z"},
+        {"id": "boundary", "title": "LLM 新进展", "date": "2026-10-10"},
+        {"id": "unknown", "title": "AI 模型发布"},
+    ]
+    for row in rows:
+        row["url"] = f"https://example.com/{row['id']}"
+    result = last30days_sources._chinese_items(
+        {"baidu": rows}, {"baidu"}, report_date=date(2026, 10, 12), lookback_days=2,
+    )
+    assert [entry.id for entry in result] == [
+        "last30days-cn-baidu:recent", "last30days-cn-baidu:boundary",
+        "last30days-cn-baidu:unknown",
+    ]
+
+
 def test_english_results_map_reddit_and_x_only():
     payload = {
         "results": [

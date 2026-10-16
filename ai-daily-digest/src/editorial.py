@@ -15,6 +15,32 @@ AI_TERMS = (
     "人工智能", "智能体", "推理", "多模态", "开源模型", "具身智能",
 )
 
+# 社区是开放检索来源，泛指的 model / reasoning / benchmark 等不能单独证明 AI 相关。
+COMMUNITY_AI_TERMS = tuple(term for term in AI_TERMS if term not in {
+    "model", "agent", "transformer", "diffusion", "neural", "benchmark",
+    "reasoning", "alignment", "inference", "推理",
+}) + (
+    "language model", "generative ai", "generative model", "generative image",
+    "machine learning", "deep learning", "neural network", "agentic", "llama",
+    "chatgpt", "copilot", "codex", "kimi", "qwen", "机器学习", "深度学习",
+    "神经网络", "语言模型", "生成式", "模型推理", "模型评测", "通义千问", "豆包",
+)
+
+
+def has_community_ai_context(title: str, text: str) -> bool:
+    """只从原始内容判断相关性，忽略来源名、作者句柄、URL 和聚合器模板。"""
+    if text.startswith(("Lobsters AI 社区：", "GenAI Stack Exchange：")):
+        text = ""
+    content = re.sub(r"https?://\S+|@[A-Za-z0-9_]+", " ", f"{title} {text}").lower()
+    for term in COMMUNITY_AI_TERMS:
+        if term.isascii():
+            if re.search(r"(?<![a-z0-9_])" + re.escape(term) + r"s?(?![a-z_])", content):
+                return True
+        elif term in content:
+            return True
+    return False
+
+
 SUBSTANCE_TERMS = (
     "release", "launch", "paper", "benchmark", "dataset", "open source",
     "weights", "model", "framework", "agent", "security", "safety",
@@ -132,6 +158,12 @@ def apply_quality_scores(items: list[NewsItem]) -> None:
 
 def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[NewsItem]:
     """Drop obvious low-signal items while preserving room for sparse sections."""
+    # 硬门槛独立于热度、模型评分和稀疏板块保底；摘要也不能为原始无关内容补相关性。
+    items = [
+        item for item in items
+        if item.section not in {"community", "community_cn"}
+        or has_community_ai_context(item.title, item.text)
+    ]
     quality_cfg = cfg.get("quality", {})
     if not quality_cfg.get("enabled", True):
         apply_quality_scores(items)
@@ -149,13 +181,15 @@ def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[
         if quality >= threshold:
             kept_by_section[item.section].append(item)
 
-    # Keep a small sample per non-empty section, so sparse days do not look broken.
+    # 其他板块保留原来的稀疏样本策略；开放社区允许没有合格内容。
     minimum = quality_cfg.get("min_items_per_section", 1)
     if minimum:
         original_by_section: dict[str, list[NewsItem]] = defaultdict(list)
         for item in items:
             original_by_section[item.section].append(item)
         for section, original in original_by_section.items():
+            if section in {"community", "community_cn"}:
+                continue
             if kept_by_section.get(section):
                 continue
             fallback = sorted(
