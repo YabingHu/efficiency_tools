@@ -71,6 +71,37 @@ def test_trim_ignores_disabled_sections_and_ranks_scores(cfg):
     assert [value.id for value in main.trim_items(cfg, items)] == ["high", "low"]
 
 
+def test_pipeline_filters_high_heat_noise_before_trimming(monkeypatch, cfg):
+    for key, section in cfg["sections"].items():
+        section["enabled"] = key == "community"
+    cfg["sections"]["community"]["limit"] = 1
+    noise = [
+        NewsItem(
+            f"noise-{i}", "community", "Rust web framework", f"https://example.com/noise/{i}",
+            "Hacker News", text="Fast server rendering and desktop integration. " * 10, score=1000,
+        ) for i in range(4)
+    ]
+    relevant = NewsItem(
+        "relevant", "community", "LLM evaluation method", "https://example.com/relevant",
+        "Hacker News", text="An AI model evaluation with reproducible experimental results. " * 10,
+        score=1,
+    )
+    monkeypatch.setattr(main, "load_config", lambda: cfg)
+    monkeypatch.setattr(main, "setup_logging", lambda *_: None)
+    monkeypatch.setattr(main, "collect_all", lambda *_: ([*noise, relevant], {}))
+    monkeypatch.setattr("sys.argv", ["digest", "--no-llm", "--date", "2020-01-01"])
+
+    main.main()
+
+    from pathlib import Path
+
+    report = Path(cfg["_root"]) / cfg["output_dir"] / "2020-01-01.html"
+    content = report.read_text(encoding="utf-8")
+    assert "LLM evaluation method" in content
+    assert "Rust web framework" not in content
+    assert "今日必读" not in content
+
+
 def test_rss_runs_when_only_media_is_enabled(monkeypatch, cfg):
     for section in cfg["sections"].values():
         section["enabled"] = False

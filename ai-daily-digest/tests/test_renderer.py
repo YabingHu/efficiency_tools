@@ -153,7 +153,9 @@ def test_render_replaces_legacy_overviews_with_linked_must_reads(cfg):
         section["enabled"] = key == "industry"
     news = NewsItem(
         "thread-1", "industry", "OpenAI releases a new LLM safety report",
-        "https://example.com/thread", "OpenAI", summary_zh="安全报告摘要",
+        "https://example.com/thread", "OpenAI",
+        text="Safety evaluation methodology and results. " * 8,
+        summary_zh="安全报告摘要",
         importance=4, meta={"quality_score": 88, "quality_reasons": ["AI 相关性强"]},
     )
 
@@ -187,23 +189,60 @@ def test_must_reads_only_include_selected_articles_and_deduplicate_urls(cfg):
         section["enabled"] = key == "industry"
     cfg["sections"]["industry"]["limit"] = 2
     items = [
-        NewsItem("a", "industry", "A", "https://example.com/a", "A", importance=5),
-        NewsItem("b", "industry", "B", "https://example.com/a?utm_source=x", "B", importance=4),
-        NewsItem("c", "industry", "Excluded", "https://example.com/c", "C", importance=3),
-        NewsItem("d", "papers", "Disabled", "https://example.com/d", "D", importance=5),
+        must_read_candidate("a", "industry", url="https://example.com/a", quality=90),
+        must_read_candidate("b", "industry", url="https://example.com/a?utm_source=x", quality=80),
+        must_read_candidate("c", "industry", quality=70),
+        must_read_candidate("d", "papers", quality=95),
     ]
     assert [item.id for item in must_read_items(cfg, items)] == ["a"]
 
 
 def test_must_reads_cover_sections_and_limit_to_five(cfg):
     papers = [
-        NewsItem(str(i), "papers", f"Paper {i}", f"https://example.com/p{i}", "HF", importance=5)
+        must_read_candidate(str(i), "papers", quality=90)
         for i in range(8)
     ]
-    news = NewsItem("n", "industry", "News", "https://example.com/n", "News", importance=4)
+    news = must_read_candidate("n", "industry", quality=80)
     reads = must_read_items(cfg, [*papers, news])
     assert len(reads) == 5
     assert news in reads
+
+
+def must_read_candidate(item_id, section="papers", *, url=None, quality=80):
+    return NewsItem(
+        item_id, section, f"LLM release {item_id}", url or f"https://example.com/{item_id}",
+        "source", text="A detailed AI evaluation with specific results and limitations. " * 6,
+        summary_zh="这项研究提供了具体的实验结果，并说明适用范围。", importance=4,
+        meta={"quality_score": quality, "summary_status": "generated"},
+    )
+
+
+def test_must_reads_can_be_fewer_than_five_and_do_not_fill_weak_sections(cfg):
+    strong = [must_read_candidate(str(i)) for i in range(3)]
+    weak = must_read_candidate("weak", "github", quality=64)
+    short = must_read_candidate("short", "industry", quality=99)
+    short.text = "A brief AI release."
+    assert must_read_items(cfg, [*strong, weak, short]) == strong
+
+
+def test_must_reads_reject_missing_fallback_and_empty_summaries(cfg):
+    items = [must_read_candidate(str(i)) for i in range(4)]
+    items[0].summary_zh = "来源未提供更多细节。"
+    items[1].meta["summary_status"] = "fallback"
+    items[2].summary_zh = ""
+    items[3].meta["summary_status"] = "raw"
+    assert must_read_items(cfg, items) == []
+
+
+def test_must_read_thresholds_are_configurable(cfg):
+    candidate = must_read_candidate("candidate", quality=70)
+    cfg["must_read"]["min_quality_score"] = 75
+    assert must_read_items(cfg, [candidate]) == []
+    cfg["must_read"]["min_quality_score"] = 65
+    assert must_read_items(cfg, [candidate]) == [candidate]
+    cfg["must_read"]["min_source_chars"] = 1000
+    assert must_read_items(cfg, [candidate]) == []
+    assert must_read_items(cfg, [candidate], limit=0) == []
 
 
 def test_empty_report_has_no_must_read_block(cfg):

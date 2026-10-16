@@ -100,6 +100,13 @@ def validate_config(cfg: dict) -> None:
         maximum=100,
     )
     min_score = quality.get("min_score", {})
+    min_source_chars = quality.get("min_source_chars", {})
+    if not isinstance(min_source_chars, dict):
+        raise ValueError("quality.min_source_chars 必须是对象")
+    for section, minimum in min_source_chars.items():
+        if section not in {"github", "community", "community_cn"}:
+            raise ValueError(f"quality.min_source_chars 包含不支持的板块: {section}")
+        _positive_int(minimum, f"quality.min_source_chars.{section}", maximum=5000)
     if not isinstance(min_score, dict):
         raise ValueError("quality.min_score 必须是对象")
     valid_threshold_keys = set(sections) | {"default"}
@@ -120,6 +127,14 @@ def validate_config(cfg: dict) -> None:
             )
         for section, threshold in thresholds.items():
             _score_threshold(threshold, f"quality.min_score.{stage}.{section}")
+
+    must_read = cfg.get("must_read", {})
+    if not isinstance(must_read, dict):
+        raise ValueError("must_read 必须是对象")
+    _score_threshold(must_read.get("min_quality_score", 65), "must_read.min_quality_score")
+    _positive_int(
+        must_read.get("min_source_chars", 160), "must_read.min_source_chars", maximum=5000,
+    )
 
     paper_topics = cfg.get("paper_topics", [])
     if not isinstance(paper_topics, list):
@@ -162,6 +177,14 @@ def validate_config(cfg: dict) -> None:
     sources = cfg.get("sources")
     if not isinstance(sources, dict):
         raise ValueError("sources 必须是对象")
+    github = sources.get("github", {})
+    if not isinstance(github, dict):
+        raise ValueError("sources.github 必须是对象")
+    for key, default, maximum in (
+        ("content_fetch_limit", 12, 50), ("content_workers", 3, 8),
+        ("content_timeout_seconds", 10, 60),
+    ):
+        _positive_int(github.get(key, default), f"sources.github.{key}", maximum=maximum)
     rss = sources.get("rss", {})
     feeds = rss.get("feeds", []) if isinstance(rss, dict) else []
     if not isinstance(feeds, list):

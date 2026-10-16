@@ -8,6 +8,10 @@ initial_visible_items: 4  # 每个板块默认显示条数，其余内容可展�
 quality:
   enabled: true
   min_items_per_section: 1
+  min_source_chars:  # 原始素材硬门槛，不受热度、模型评分或板块保底影响
+    github: 160
+    community: 60
+    community_cn: 60
   min_score:
     pre_llm:
       default: 16
@@ -19,6 +23,11 @@ quality:
       github: 30
       community: 22
       community_cn: 22
+
+# 必读可以少于 5 条；先满足质量与原始素材门槛，再考虑板块覆盖。
+must_read:
+  min_quality_score: 65
+  min_source_chars: 160
 
 # 跨天去重：同一条资讯连续几天被采集到时，只在第一次展示，窗口期内不再重复。
 # 单次运行内的去重始终生效；此处仅控制跨天窗口。台账存于 history/seen-items.json。
@@ -154,6 +163,9 @@ sources:
                deepseek, gemini, qwen, inference, embedding, diffusion,
                neural, machine learning, ml, copilot, assistant]
     max_fetch: 15
+    content_fetch_limit: 12  # 只补读匹配候选的 README 和最新 Release
+    content_workers: 3
+    content_timeout_seconds: 10
   rss:
     lookback_hours: 48
     max_staleness_hours: 96  # 超过该时长未更新的源不再冒充“今日资讯”

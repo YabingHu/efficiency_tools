@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .editorial import quality_sort_key, topic_tags
+from .editorial import LOW_SIGNAL_PATTERNS, has_sufficient_source, quality_sort_key, topic_tags
 from .models import NewsItem
 from .utils import canonical_url, safe_http_url, take_with_source_limit
 
@@ -122,11 +122,23 @@ def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
 
 
 def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[NewsItem]:
-    """从最终展示条目选必读，先覆盖不同板块，再按质量补足。"""
+    """先通过质量与素材硬门槛，再从最终展示条目中兼顾板块覆盖。"""
+    if limit <= 0:
+        return []
+    requirements = cfg.get("must_read", {})
     paper_keys = set(_paper_section_keys(cfg))
     ranked = sorted(selected_items(cfg, items), key=quality_sort_key, reverse=True)
     candidates, seen = [], set()
     for item in ranked:
+        if (
+            quality_sort_key(item)[0] < requirements.get("min_quality_score", 65)
+            or not has_sufficient_source(item, requirements.get("min_source_chars", 160))
+            or not item.summary_zh.strip()
+            or item.meta.get("summary_status") in {"fallback", "raw"}
+            or LOW_SIGNAL_PATTERNS[0].search(item.summary_zh)
+            or "中文摘要暂未生成" in item.summary_zh
+        ):
+            continue
         if not safe_http_url(item.url):
             continue
         url = canonical_url(item.url)

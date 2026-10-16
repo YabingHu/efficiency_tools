@@ -5,6 +5,25 @@ import pytest
 from src.config import load_config, validate_config
 
 
+@pytest.mark.parametrize("path,value", [
+    (("must_read", "min_quality_score"), 101),
+    (("must_read", "min_source_chars"), 0),
+    (("quality", "min_source_chars", "community"), False),
+    (("quality", "min_source_chars", "unknown"), 80),
+    (("sources", "github", "content_fetch_limit"), 0),
+    (("sources", "github", "content_workers"), 100),
+    (("sources", "github", "content_timeout_seconds"), -1),
+])
+def test_config_rejects_invalid_editorial_and_enrichment_limits(path, value):
+    cfg = deepcopy(load_config())
+    target = cfg
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(ValueError):
+        validate_config(cfg)
+
+
 def test_config_rejects_output_outside_project():
     cfg = deepcopy(load_config())
     cfg.pop("_root", None)

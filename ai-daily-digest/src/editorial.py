@@ -41,6 +41,21 @@ def has_community_ai_context(title: str, text: str) -> bool:
     return False
 
 
+def source_content(item: NewsItem) -> str:
+    """原始正文中的有效素材；互动数和标签模板不能充当正文。"""
+    text = item.text.strip()
+    if text.startswith((
+        "Lobsters AI 社区：", "GenAI Stack Exchange：", "AI Stack Exchange：",
+    )):
+        return ""
+    return text
+
+
+def has_sufficient_source(item: NewsItem, min_chars: int) -> bool:
+    text = source_content(item)
+    return text != item.title.strip() and len(re.sub(r"\s+", "", text)) >= min_chars
+
+
 SUBSTANCE_TERMS = (
     "release", "launch", "paper", "benchmark", "dataset", "open source",
     "weights", "model", "framework", "agent", "security", "safety",
@@ -159,12 +174,20 @@ def apply_quality_scores(items: list[NewsItem]) -> None:
 def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[NewsItem]:
     """Drop obvious low-signal items while preserving room for sparse sections."""
     # 硬门槛独立于热度、模型评分和稀疏板块保底；摘要也不能为原始无关内容补相关性。
+    quality_cfg = cfg.get("quality", {})
+    min_source_chars = quality_cfg.get("min_source_chars", {})
     items = [
         item for item in items
-        if item.section not in {"community", "community_cn"}
-        or has_community_ai_context(item.title, item.text)
+        if (
+            item.section not in {"community", "community_cn", "github"}
+            or has_community_ai_context(item.title, source_content(item))
+        ) and (
+            item.section not in {"community", "community_cn", "github"}
+            or has_sufficient_source(
+                item, min_source_chars.get(item.section, 160 if item.section == "github" else 60),
+            )
+        )
     ]
-    quality_cfg = cfg.get("quality", {})
     if not quality_cfg.get("enabled", True):
         apply_quality_scores(items)
         return items

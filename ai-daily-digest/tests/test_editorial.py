@@ -47,6 +47,44 @@ def test_community_does_not_fill_with_items_below_quality_threshold():
     assert filter_noise_items(cfg, [candidate], stage="post_llm") == []
 
 
+@pytest.mark.parametrize("section", ["github", "community", "community_cn"])
+@pytest.mark.parametrize("stage", ["pre_llm", "post_llm"])
+def test_short_source_cannot_be_rescued_by_generated_summary_or_heat(section, stage):
+    candidate = item("brief", section=section, title="AI 黑话一次讲清", text="大模型与智能体科普。")
+    candidate.score = 100000
+    candidate.importance = 5
+    candidate.summary_zh = "大模型发布和评测结果。" * 40
+    assert filter_noise_items({"quality": {"enabled": False}}, [candidate], stage=stage) == []
+
+
+@pytest.mark.parametrize("stage", ["pre_llm", "post_llm"])
+def test_actual_unrelated_community_examples_are_rejected(stage):
+    candidates = [
+        item("desktop", section="community", title="Wayland desktop for Linux",
+             text="A skeuomorphic desktop with windows, lighting and a wooden desk. " * 10),
+        item("rust", section="community", title="Proa Rust web framework",
+             text="A fast SSR framework with multi-target rendering and benchmarks. " * 10),
+        item("snap", section="community", title="GridSnap window snapper",
+             text="A macOS window manager with keyboard shortcuts and accessibility. " * 10),
+    ]
+    assert filter_noise_items({}, candidates, stage=stage) == []
+
+
+def test_community_stats_template_is_not_substantive_content():
+    candidate = item("stats", section="community", title="Qwen Edit image placement problem",
+                     text="GenAI Stack Exchange：1 票，1 个回答，500 次浏览。标签：qwen, ai。" * 5)
+    assert filter_noise_items({}, [candidate], stage="pre_llm") == []
+
+
+def test_substantial_short_chinese_ai_news_survives():
+    candidate = item(
+        "news", section="community_cn", title="开源大模型发布",
+        text=("该团队发布开源大模型，支持本地部署、工具调用与长上下文，"
+              "并公布评测方法和硬件需求。") * 2,
+    )
+    assert filter_noise_items({}, [candidate], stage="pre_llm") == [candidate]
+
+
 def item(item_id, section="github", title="LLM agent framework", text=None, score=0):
     return NewsItem(
         item_id,

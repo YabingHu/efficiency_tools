@@ -107,6 +107,7 @@ def test_summary_cache_is_reused_across_runs(tmp_path):
     assert len(calls) == 1
     assert second_item.summary_zh == "缓存摘要"
     assert second_item.importance == 4
+    assert second_item.meta["summary_status"] == "generated"
 
 
 def test_make_overview_returns_points_and_content_based_thread_titles(tmp_path):
@@ -253,4 +254,5 @@ def test_service_configuration_errors_stop_retries_and_keep_cache(tmp_path, monk
     assert calls == [True]
     assert items[0].summary_zh == "这是一条已经缓存的中文摘要。"
     assert all(item.summary_zh == "中文摘要暂未生成，请点击标题查看原文。" for item in items[1:])
+    assert all(item.meta["summary_status"] == "fallback" for item in items[1:])
     assert len(summarizer._cache) == 1

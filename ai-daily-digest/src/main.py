@@ -175,6 +175,7 @@ def trim_items(cfg: dict, items: list) -> list:
 
 def apply_no_llm_fallback(items: list) -> None:
     for item in items:
+        item.meta["summary_status"] = "raw"
         text = " ".join(item.text.split())
         item.summary_zh = text if len(text) <= 360 else text[:359].rstrip() + "…"
         item.importance = 3
@@ -267,13 +268,13 @@ def main():
         deduped = ledger.filter_unseen(deduped, report_date.date())
         log.info("跨天去重后 %d 条（原 %d 条）", len(deduped), before)
 
-    # 3. 摘要前预裁剪：每板块最多保留 limit*2 条，控制 token 消耗
-    #    （有热度分的按分数取头部；arXiv 等无分数的保持采集顺序=时间倒序）
-    deduped = trim_items(cfg, deduped)
+    # 3. 先排除弱相关与缺少素材的内容，避免高热度噪声占掉预裁剪名额。
     before_quality = len(deduped)
     deduped = filter_noise_items(cfg, deduped, stage="pre_llm")
     pre_quality_dropped = before_quality - len(deduped)
     log.info("质量过滤后送入摘要 %d 条（原 %d 条）", len(deduped), before_quality)
+    # 每板块最多保留 limit*2 条，控制 token 消耗。
+    deduped = trim_items(cfg, deduped)
     log.info("预裁剪后送入摘要 %d 条", len(deduped))
 
     # 4. 生成单条摘要；必读从质量过滤后的最终展示条目选取，不再额外调用模型。
