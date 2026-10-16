@@ -17,6 +17,7 @@
     --surface: #ffffff;
     --bg: #f5f6fa;
     --shadow: 0 12px 36px rgba(37, 43, 67, .06);
+    --page-width: min(92%, 1800px);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
@@ -25,10 +26,10 @@
     background: var(--bg); color: var(--text); line-height: 1.75;
     -webkit-font-smoothing: antialiased;
   }
-  .container { max-width: 1080px; margin: 0 auto; padding: 0 28px 80px; }
+  .container { width: var(--page-width); margin: 0 auto; padding: 0 0 80px; }
   header {
     position: relative; overflow: hidden;
-    max-width: 1120px; margin: 24px auto 52px; padding: 52px 56px;
+    width: var(--page-width); margin: 24px auto 40px; padding: 52px 56px;
     background: linear-gradient(125deg, #4c50c8 0%, #6855db 55%, #8c56df 100%);
     color: #fff; border-radius: 28px;
     box-shadow: 0 24px 60px rgba(83, 73, 190, .22);
@@ -179,10 +180,15 @@
     .section-github .entries, .section-community .entries, .section-community_cn .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .section-github .card, .section-community .card, .section-community_cn .card { height: 100%; }
   }
+  @media (min-width: 1200px) {
+    .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card { min-width: 0; height: 100%; }
+    .card .title { overflow-wrap: anywhere; }
+  }
   @media (max-width: 720px) {
-    header { margin: 0 0 34px; padding: 38px 24px; border-radius: 0 0 24px 24px; }
+    header { width: 100%; margin: 0 0 34px; padding: 38px 24px; border-radius: 0 0 24px 24px; }
     header h1 { font-size: 28px; }
-    .container { padding: 0 17px 56px; }
+    .container { width: 100%; padding: 0 17px 56px; }
     .overview { padding: 22px 20px; border-radius: 16px; }
     .section-nav {
       flex-wrap: nowrap; overflow-x: auto; padding-bottom: 16px;
