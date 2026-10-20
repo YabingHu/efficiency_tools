@@ -1,6 +1,12 @@
+import json
 from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from src import main
+from src.history import sync_history
 from src.models import NewsItem
 
 
@@ -168,3 +174,57 @@ def test_trim_balances_sources_before_filling_remaining_slots(cfg):
     ]
     result = main.trim_items(cfg, items)
     assert [value.id for value in result] == ["hn-1", "hn-2", "lob-1", "se-1"]
+
+
+def test_summary_budget_exhaustion_still_renders_latest_and_history(monkeypatch, cfg):
+    cfg["quality"]["enabled"] = False
+    cfg["dedup"]["enabled"] = False
+    cfg["llm"]["batch_size"] = 1
+    cfg["llm"]["total_timeout_seconds"] = 5
+    items = [
+        NewsItem(str(i), "industry", f"AI release {i}", f"https://example.com/{i}", "src",
+                 text="AI 模型发布的详细说明。" * 20)
+        for i in range(3)
+    ]
+    clock = [0.0]
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs["timeout"])
+        if len(calls) == 1:
+            clock[0] += 2
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content='[{"id":"0","summary":"已经生成的中文摘要。"}]'),
+                finish_reason="stop",
+            )])
+        clock[0] += 3
+        raise TimeoutError("模拟请求耗尽剩余预算")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr("src.summarizer.OpenAI", lambda **_: client)
+    monkeypatch.setattr("src.summarizer.get_api_key", lambda: "test-key")
+    monkeypatch.setattr("src.summarizer.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("src.summarizer.time.sleep", lambda *_: pytest.fail("预算耗尽不应等待"))
+    monkeypatch.setattr(main, "load_config", lambda: cfg)
+    monkeypatch.setattr(main, "setup_logging", lambda *_: None)
+    monkeypatch.setattr(main, "collect_all", lambda *_: (items, {}))
+    monkeypatch.setattr("sys.argv", ["digest"])
+
+    main.main()
+
+    output = Path(cfg["_root"]) / cfg["output_dir"]
+    status = json.loads((output / "run-status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "success"
+    assert status["latest_updated"]
+    assert status["summary_status"] == {
+        "generated_items": 1, "fallback_items": 2, "budget_exhausted": True,
+    }
+    assert calls == [5, 3]
+    content = (output / "index.html").read_text(encoding="utf-8")
+    assert "已经生成的中文摘要。" in content
+    assert "AI release 2" in content
+    assert (output / "latest.html").read_text(encoding="utf-8") == content
+    report_date = date.fromisoformat(status["report_date"])
+    assert sync_history(cfg, report_date) == [status["report_date"]]
+    assert (output / "archive.html").is_file()
+    assert (Path(cfg["_root"]) / "history" / f"{report_date}.html").is_file()

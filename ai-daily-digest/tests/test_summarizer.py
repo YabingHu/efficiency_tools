@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 from src.models import NewsItem
 from src.summarizer import (
     Summarizer,
+    SummaryResponseError,
     _extract_json,
     _sanitize_comment,
     _validated_results,
@@ -16,6 +18,10 @@ def _make_summarizer(tmp_path):
     summarizer = Summarizer.__new__(Summarizer)
     summarizer.model = "test-model"
     summarizer.batch_size = 12
+    summarizer.request_timeout_seconds = 60
+    summarizer.total_timeout_seconds = 900
+    summarizer._deadline = None
+    summarizer.budget_exhausted = False
     summarizer.max_input_chars_per_item = 2400
     summarizer.cache_retention_days = 30
     summarizer.cache_path = tmp_path / "history" / "summary-cache.json"
@@ -266,3 +272,101 @@ def test_service_configuration_errors_stop_retries_and_keep_cache(tmp_path, monk
     assert all(item.summary_zh == "中文摘要暂未生成，请点击标题查看原文。" for item in items[1:])
     assert all(item.meta["summary_status"] == "fallback" for item in items[1:])
     assert len(summarizer._cache) == 1
+
+
+@pytest.mark.parametrize("content,finish_reason", [(None, "stop"), ("[", "length")])
+def test_empty_and_truncated_responses_split_without_retrying_same_batch(
+    tmp_path, monkeypatch, content, finish_reason,
+):
+    summarizer = _make_summarizer(tmp_path)
+    summarizer.max_retries = 2
+    summarizer.temperature = 0.3
+    summarizer.max_output_tokens = 4096
+    calls = []
+
+    def create(**kwargs):
+        data = kwargs["messages"][1]["content"].split("<data>\n", 1)[1]
+        payload = json.loads(data.rsplit("\n</data>", 1)[0])
+        calls.append([row["id"] for row in payload])
+        response = content if len(payload) > 1 else json.dumps([
+            {"id": payload[0]["id"], "summary": "这是一条完整的中文摘要。"},
+        ])
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=response),
+            finish_reason=finish_reason if len(payload) > 1 else "stop",
+        )])
+
+    summarizer.client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=create),
+    ))
+    monkeypatch.setattr("src.summarizer.time.sleep", lambda *_: pytest.fail("不应原样重试"))
+    items = [
+        NewsItem(str(i), "industry", "AI news", f"https://example.com/{i}", "src")
+        for i in range(2)
+    ]
+    summarizer.summarize_items(items)
+    assert calls == [["0", "1"], ["0"], ["1"]]
+    assert all(item.meta["summary_status"] == "generated" for item in items)
+
+
+def test_transport_retry_uses_remaining_budget_as_request_timeout(tmp_path, monkeypatch):
+    summarizer = _make_summarizer(tmp_path)
+    summarizer.max_retries = 2
+    summarizer.temperature = 0.3
+    summarizer.max_output_tokens = 4096
+    clock = [0.0]
+    summarizer._deadline = 5
+    timeouts = []
+
+    def create(**kwargs):
+        timeouts.append(kwargs["timeout"])
+        if len(timeouts) == 1:
+            raise TimeoutError("temporary network failure")
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content='[{"id":"a","summary":"中文摘要"}]'),
+        )])
+
+    summarizer.client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=create),
+    ))
+    monkeypatch.setattr("src.summarizer.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("src.summarizer.time.sleep", lambda seconds: clock.__setitem__(
+        0, clock[0] + seconds,
+    ))
+    assert "中文摘要" in summarizer._chat("prompt", [])
+    assert timeouts == [5, 3]
+
+
+def test_deadline_during_split_preserves_successful_child_and_cache(tmp_path, monkeypatch):
+    summarizer = _make_summarizer(tmp_path)
+    summarizer.total_timeout_seconds = 5
+    clock = [0.0]
+    monkeypatch.setattr("src.summarizer.time.monotonic", lambda: clock[0])
+    items = [
+        NewsItem(str(i), "community", "AI news", f"https://example.com/{i}", "src")
+        for i in range(5)
+    ]
+    summarizer._cache[summarizer._cache_key(items[0])] = {
+        "summary": "这是一条已经缓存的中文摘要。", "importance": 4,
+        "cached_at": datetime.now(UTC).isoformat(),
+    }
+    calls = []
+
+    def fake_chat(_prompt, payload):
+        calls.append([row["id"] for row in payload])
+        clock[0] += 2
+        if len(payload) > 1:
+            raise SummaryResponseError("batch too large")
+        return json.dumps([{"id": payload[0]["id"], "summary": "这是一条新的中文摘要。"}])
+
+    summarizer._chat = fake_chat
+    summarizer.summarize_items(items)
+    assert calls == [["1", "2", "3", "4"], ["1", "2"], ["1"]]
+    assert summarizer.budget_exhausted
+    assert [item.meta["summary_status"] for item in items] == [
+        "generated", "generated", "fallback", "fallback", "fallback",
+    ]
+    assert len(summarizer._cache) == 2
+    restored = _make_summarizer(tmp_path)
+    assert len(restored._cache) == 2
+    assert all(item.summary_zh == "中文摘要暂未生成，请点击标题查看原文。" for item in items[2:])
