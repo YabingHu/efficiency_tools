@@ -80,6 +80,14 @@ class SummaryServiceError(RuntimeError):
     """鉴权、权限或模型配置错误，拆分批次不能修复。"""
 
 
+class SummaryBudgetExceeded(RuntimeError):
+    """摘要时间预算耗尽，保留已有结果并继续渲染。"""
+
+
+class SummaryResponseError(ValueError):
+    """空内容或截断响应，应直接拆分而非重复请求原批次。"""
+
+
 def _usable_summary(item: NewsItem, result: dict) -> bool:
     # 海外社区不把英文原文或英文缓存冒充中文摘要；模型名等英文术语仍可保留。
     return bool(result) and (
@@ -198,14 +206,28 @@ class Summarizer:
         self.max_retries = llm.get("max_retries", 2)
         self.temperature = llm.get("temperature", 0.3)
         self.max_output_tokens = llm.get("max_output_tokens", 4096)
+        self.request_timeout_seconds = llm.get("timeout_seconds", 60)
+        self.total_timeout_seconds = llm.get("total_timeout_seconds", 900)
+        self._deadline = None
+        self.budget_exhausted = False
         self.max_input_chars_per_item = llm.get("max_input_chars_per_item", 2400)
         self.cache_retention_days = llm.get("cache_retention_days", 30)
         self.cache_path = Path(cfg["_root"]) / "history" / "summary-cache.json"
         self._cache, self._cache_dirty = self._load_cache()
 
+    def _remaining_seconds(self) -> float:
+        if self._deadline is None:
+            return self.request_timeout_seconds
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            self.budget_exhausted = True
+            raise SummaryBudgetExceeded("摘要时间预算耗尽，剩余条目使用降级展示")
+        return remaining
+
     def _chat(self, system_prompt: str, payload) -> str:
         last_err = None
         for attempt in range(self.max_retries + 1):
+            timeout = min(self.request_timeout_seconds, self._remaining_seconds())
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,
@@ -223,13 +245,19 @@ class Summarizer:
                     ],
                     temperature=self.temperature,
                     max_tokens=self.max_output_tokens,
+                    timeout=timeout,
                 )
                 if getattr(resp, "usage", None):
                     log.info("LLM 本次调用 token: %s", resp.usage.total_tokens)
-                content = resp.choices[0].message.content
+                choice = resp.choices[0]
+                if getattr(choice, "finish_reason", None) == "length":
+                    raise SummaryResponseError("LLM 输出达到 token 上限")
+                content = choice.message.content
                 if not content:
-                    raise ValueError("LLM 返回空内容")
+                    raise SummaryResponseError("LLM 返回空内容")
                 return content
+            except SummaryResponseError:
+                raise
             except Exception as e:
                 if getattr(e, "status_code", None) in {401, 403, 404}:
                     raise SummaryServiceError(
@@ -238,7 +266,7 @@ class Summarizer:
                 last_err = e
                 log.warning("LLM 调用失败（第 %d 次）: %s", attempt + 1, e)
                 if attempt < self.max_retries:
-                    time.sleep(2 * (attempt + 1))
+                    time.sleep(min(2 * (attempt + 1), self._remaining_seconds()))
         raise last_err
 
     def _cache_key(self, item: NewsItem) -> str:
@@ -320,6 +348,10 @@ class Summarizer:
         """摘要一个批次；失败或漏项时递归拆分，只降级真正失败的单条。"""
         if not batch:
             return {}
+        try:
+            self._remaining_seconds()
+        except SummaryBudgetExceeded:
+            return {}
         payload = [
             {
                 "id": item.id,
@@ -341,6 +373,8 @@ class Summarizer:
             }
         except SummaryServiceError:
             raise
+        except SummaryBudgetExceeded:
+            return {}
         except Exception as exc:
             log.warning("%d 条摘要请求失败，将拆分重试: %s", len(batch), exc)
             results = {}
@@ -360,6 +394,8 @@ class Summarizer:
 
     def summarize_items(self, items: list[NewsItem]) -> None:
         """就地填充摘要；优先复用缓存，批次失败时拆分到单条。"""
+        self._deadline = time.monotonic() + self.total_timeout_seconds
+        self.budget_exhausted = False
         results: dict[str, dict] = {}
         pending = []
         for item in items:
@@ -373,6 +409,10 @@ class Summarizer:
             log.info("摘要缓存命中 %d/%d 条", len(results), len(items))
 
         for i in range(0, len(pending), self.batch_size):
+            try:
+                self._remaining_seconds()
+            except SummaryBudgetExceeded:
+                break
             batch = pending[i:i + self.batch_size]
             try:
                 generated = self._summarize_batch(batch)
@@ -391,7 +431,11 @@ class Summarizer:
                     self._cache_dirty = True
             self._save_cache_safely()
             log.info("摘要进度 %d/%d", min(i + self.batch_size, len(pending)), len(pending))
+            if self.budget_exhausted:
+                break
 
+        if self.budget_exhausted:
+            log.warning("摘要时间预算耗尽，保留 %d/%d 条摘要并继续渲染", len(results), len(items))
         for item in items:
             result = results.get(item.id, {})
             item.meta["summary_status"] = "generated" if result else "fallback"

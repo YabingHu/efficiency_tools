@@ -7,6 +7,9 @@ from src.config import load_config, validate_config
 
 @pytest.mark.parametrize("path,value", [
     (("must_read", "min_quality_score"), 101),
+    (("llm", "total_timeout_seconds"), 0),
+    (("llm", "total_timeout_seconds"), False),
+    (("llm", "total_timeout_seconds"), 1201),
     (("must_read", "min_source_chars"), 0),
     (("quality", "min_source_chars", "community"), False),
     (("quality", "min_source_chars", "unknown"), 80),

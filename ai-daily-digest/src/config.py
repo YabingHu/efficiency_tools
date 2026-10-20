@@ -159,6 +159,9 @@ def validate_config(cfg: dict) -> None:
         raise ValueError("llm.model 不能为空")
     _positive_int(llm.get("batch_size", 12), "llm.batch_size", maximum=50)
     _positive_int(llm.get("timeout_seconds", 60), "llm.timeout_seconds", maximum=600)
+    _positive_int(
+        llm.get("total_timeout_seconds", 900), "llm.total_timeout_seconds", maximum=1200,
+    )
     _positive_int(llm.get("max_output_tokens", 4096), "llm.max_output_tokens", maximum=32768)
     _positive_int(
         llm.get("max_input_chars_per_item", 2400),

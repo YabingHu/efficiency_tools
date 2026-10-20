@@ -47,10 +47,11 @@ http:
 llm:
   base_url: https://llm-sd31i4a7ip2ecfyq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
   model: deepseek-v4-flash-0731
-  batch_size: 6         # 控制单次输出长度，避免模型截断 JSON
+  batch_size: 3         # 缩小批次，降低空响应及 JSON 截断后的重试成本
   max_retries: 2
   temperature: 0.3
   timeout_seconds: 60
+  total_timeout_seconds: 900  # 摘要最多运行 15 分钟，为归档和 Pages 发布留出时间
   max_output_tokens: 4096
   max_input_chars_per_item: 2400  # 单条正文送入摘要的最大字符数
   cache_retention_days: 30        # 相同文章和内容在此周期内复用摘要

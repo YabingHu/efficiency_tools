@@ -284,6 +284,15 @@ def main():
     else:
         summarizer = Summarizer(cfg)
         summarizer.summarize_items(deduped)
+        diagnostics["summary_status"] = {
+            "generated_items": sum(
+                item.meta.get("summary_status") == "generated" for item in deduped
+            ),
+            "fallback_items": sum(
+                item.meta.get("summary_status") == "fallback" for item in deduped
+            ),
+            "budget_exhausted": summarizer.budget_exhausted,
+        }
     apply_quality_scores(deduped)
     before_post_quality = len(deduped)
     deduped = filter_noise_items(cfg, deduped, stage="post_llm")
