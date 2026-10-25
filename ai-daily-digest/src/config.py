@@ -253,6 +253,29 @@ def validate_config(cfg: dict) -> None:
         ):
             _positive_int(x_source.get(key, default), f"sources.x_twscrape.{key}", maximum=maximum)
 
+    authors = sources.get("cn_authors", {})
+    if not isinstance(authors, dict):
+        raise ValueError("sources.cn_authors 必须是对象")
+    for key, default in (("enabled", False), ("practice_only", True), ("toutiao_content", True)):
+        if not isinstance(authors.get(key, default), bool):
+            raise ValueError(f"sources.cn_authors.{key} 必须是布尔值")
+    for key, default, maximum in (
+        ("lookback_hours", 48, 48), ("max_per_author", 5, 5), ("timeout_seconds", 100, 120),
+    ):
+        _positive_int(authors.get(key, default), f"sources.cn_authors.{key}", maximum=maximum)
+    accounts = authors.get("authors", [])
+    if not isinstance(accounts, list) or len(accounts) > 4:
+        raise ValueError("sources.cn_authors.authors 最多允许 4 个账号")
+    for index, account in enumerate(accounts):
+        path = f"sources.cn_authors.authors[{index}]"
+        if not isinstance(account, dict) or account.get("platform") not in {"weibo", "zhihu"}:
+            raise ValueError(f"{path}.platform 必须为 weibo 或 zhihu")
+        pattern = r"\d{5,20}" if account["platform"] == "weibo" else r"[A-Za-z0-9_-]{1,100}"
+        if not isinstance(account.get("id"), str) or not re.fullmatch(pattern, account["id"]):
+            raise ValueError(f"{path}.id 无效")
+        if not isinstance(account.get("name"), str) or not 1 <= len(account["name"].strip()) <= 50:
+            raise ValueError(f"{path}.name 必须为非空名称，最多 50 字符")
+
     last30days = sources.get("last30days")
     if last30days is None:
         last30days = {"enabled": False}

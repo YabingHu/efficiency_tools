@@ -1,0 +1,4 @@
+# 此文件安装到独立 venv，不改变日报主环境。
+-r .external-skills/mediacrawler-pilot/requirements.txt
+demjson3==3.0.6
+curl-cffi==0.16.3

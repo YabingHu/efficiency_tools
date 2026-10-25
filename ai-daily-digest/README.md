@@ -170,6 +170,13 @@ Secrets 后，可在 Actions → AI Daily Digest → Run workflow 手动验证�
 日报页面可以公开访问，但 API key 只在 Actions 运行时注入，不会进入仓库或
 Pages 产物。GitHub 的定时任务可能因平台负载延迟几分钟；也可随时手动运行。
 
+## 中文作者订阅
+
+微博“宝玉xp”、知乎“苏剑林”已通过 `sources.cn_authors` 接入中文开发者实践板块，
+只保留最近 48 小时、具有 AI 实践依据的内容，复用日报去重和质量筛选。
+头条候选继续由原搜索通道发现，新入口负责补读正文；不会使用固定旧文章填充。
+安装、登录及云端专用 Secret 配置见[中文来源接入说明](docs/chinese-source-pilot.md)。
+
 ## 免费 X 采集
 
 在本地终端执行（不需要向助手提供密码或 Cookies）：

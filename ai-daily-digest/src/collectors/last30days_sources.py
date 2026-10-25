@@ -355,10 +355,17 @@ def _supplement_chinese_content(
     }}
     succeeded = 0
     if selected:
+        def fetch(entry):
+            if "toutiao" in sources and "toutiao.com/article/" in entry[0]:
+                from .cn_authors import fetch_toutiao_article
+
+                body = fetch_toutiao_article(entry[0], cfg)
+                if body:
+                    return body
+            return extract_text_from_url(entry[0], fetch_cfg, min_chars=60)
+
         with ThreadPoolExecutor(max_workers=min(3, len(selected))) as pool:
-            bodies = pool.map(
-                lambda entry: extract_text_from_url(entry[0], fetch_cfg, min_chars=60), selected,
-            )
+            bodies = pool.map(fetch, selected)
             for (_, rows), body in zip(selected, bodies, strict=True):
                 if not body:
                     continue

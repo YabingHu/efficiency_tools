@@ -237,6 +237,16 @@ sources:
     timeout_seconds: 120
     request_timeout_seconds: 15
     request_delay_seconds: 2
+  cn_authors:
+    enabled: true
+    lookback_hours: 48
+    max_per_author: 5
+    timeout_seconds: 100
+    practice_only: true
+    toutiao_content: true
+    authors:
+      - {platform: weibo, id: "1727858283", name: "宝玉xp"}
+      - {platform: zhihu, id: "su-jian-lin-22", name: "苏剑林"}
   last30days:
     enabled: true
     english:
@@ -256,7 +266,7 @@ sources:
         - "智能体 踩坑"
       practice_only: true
       content_fetch_limit: 4  # 对有实践线索但缺少正文的候选补读原文，失败仍按质量门槛过滤。
-      sources: [weibo, bilibili, zhihu, baidu, toutiao]
+      sources: [bilibili, baidu, toutiao]  # 微博/知乎改用上方已验证的作者订阅。
       lookback_days: 2
       timeout_seconds: 150  # 每个引擎的全局超时；父进程额外保留 10 秒退出缓冲。
   official_updates:

@@ -13,6 +13,11 @@ on:
     - cron: "20 7 * * *"
       timezone: Asia/Shanghai
   workflow_dispatch:
+    inputs:
+      cn_source_check_only:
+        description: "只检查中文作者采集，不调用 LLM 或发布 Pages"
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -25,7 +30,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  cn_check:
+    if: github.event_name == 'workflow_dispatch' && inputs.cn_source_check_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: ai-daily-digest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            ai-daily-digest/requirements.lock
+            ai-daily-digest/requirements-cn.txt
+      - name: Install dependencies
+        run: python -m pip install --requirement requirements.lock
+      - name: Install pinned Chinese author engines
+        run: python scripts/setup_cn_sources.py
+      - name: Check Chinese authors without LLM or publishing
+        env:
+          CN_BROWSER_STATE: ${{ secrets.CN_BROWSER_STATE }}
+        run: python -m src.cn_sources_setup --check
+
   build:
+    if: github.event_name != 'workflow_dispatch' || !inputs.cn_source_check_only
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -60,6 +91,11 @@ jobs:
           git -C .external-skills/last30days-cn remote add origin https://github.com/Jesseovo/last30days-skill-cn.git
           git -C .external-skills/last30days-cn fetch --depth 1 origin a2149277b73140434a5711f007d2dcdbe5a3be86
           git -C .external-skills/last30days-cn checkout --detach FETCH_HEAD
+
+      - name: Install pinned Chinese author engines
+        continue-on-error: true
+        timeout-minutes: 7
+        run: python scripts/setup_cn_sources.py
 
       - name: Find previous history artifact
         id: previous-history
@@ -100,6 +136,7 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LAST30DAYS_EN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-en/skills/last30days
           LAST30DAYS_CN_SKILL_DIR: ${{ github.workspace }}/ai-daily-digest/.external-skills/last30days-cn/skills/last30days
+          CN_BROWSER_STATE: ${{ secrets.CN_BROWSER_STATE }}
           X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
           X_CT0: ${{ secrets.X_CT0 }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}

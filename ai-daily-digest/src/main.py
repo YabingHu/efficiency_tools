@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from .collectors import (
     arxiv_papers,
+    cn_authors,
     community_sources,
     github_trending,
     hackernews,
@@ -47,6 +48,7 @@ COLLECTORS = {
     "hackernews": (hackernews.collect, {"community"}),
     "community_sources": (community_sources.collect, {"community"}),
     "last30days": (last30days_sources.collect, {"community", "community_cn"}),
+    "cn_authors": (cn_authors.collect, {"community_cn"}),
     "x_twscrape": (x_twscrape.collect, {"community"}),
 }
 
