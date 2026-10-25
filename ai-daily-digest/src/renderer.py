@@ -165,6 +165,10 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
     # 保留旧调用参数兼容历史工具，但不再渲染无文章绑定的要点和主线。
     for item in items:
         item.meta["article_id"] = "article-" + hashlib.sha256(item.id.encode()).hexdigest()[:16]
+        item.meta["reading_url"] = (
+            "#rss-full-" + item.meta["article_id"]
+            if item.meta.get("link_status") == "rss_only" else item.url
+        )
     must_reads = must_read_items(cfg, items)
     for item in must_reads:
         summary = " ".join(item.summary_zh.split())

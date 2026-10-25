@@ -189,6 +189,10 @@ def validate_config(cfg: dict) -> None:
     ):
         _positive_int(github.get(key, default), f"sources.github.{key}", maximum=maximum)
     rss = sources.get("rss", {})
+    if not isinstance(rss, dict):
+        raise ValueError("sources.rss 必须是对象")
+    _positive_int(rss.get("content_fetch_limit", 6), "sources.rss.content_fetch_limit", maximum=20)
+    _positive_int(rss.get("content_workers", 3), "sources.rss.content_workers", maximum=6)
     feeds = rss.get("feeds", []) if isinstance(rss, dict) else []
     if not isinstance(feeds, list):
         raise ValueError("sources.rss.feeds 必须是数组")
@@ -197,6 +201,12 @@ def validate_config(cfg: dict) -> None:
         if not isinstance(feed, dict) or not str(feed.get("name", "")).strip():
             raise ValueError(f"{path}.name 不能为空")
         _http_url(feed.get("url"), f"{path}.url")
+        if not isinstance(feed.get("fetch_content", False), bool):
+            raise ValueError(f"{path}.fetch_content 必须是布尔值")
+        if "content_selector" in feed and (
+            not isinstance(feed["content_selector"], str) or not feed["content_selector"].strip()
+        ):
+            raise ValueError(f"{path}.content_selector 必须是非空字符串")
         section = feed.get("section", "industry")
         if section not in sections:
             raise ValueError(f"{path}.section 引用了不存在的板块: {section}")

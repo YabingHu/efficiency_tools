@@ -23,3 +23,13 @@ def test_extract_readable_text_drops_navigation_and_scripts():
     """
     text = content_extractor._extract_readable_text(html)
     assert text == "Useful title First useful paragraph. Second useful paragraph."
+
+
+def test_explicit_article_container_excludes_unrelated_body_and_requires_match():
+    html = ('<body><div class="menu">导航和推广</div><div class="article">'
+            '<p>AI 模型的具体配置。</p><p>实验结果及限制。</p></div>'
+            '<div>推荐内容</div></body>')
+    assert content_extractor._extract_readable_text(html, selector=".article") == (
+        "AI 模型的具体配置。 实验结果及限制。"
+    )
+    assert content_extractor._extract_readable_text(html, selector=".missing") == ""

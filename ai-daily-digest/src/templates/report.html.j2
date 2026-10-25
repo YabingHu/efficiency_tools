@@ -147,6 +147,9 @@
     margin-top: 14px; font-size: 13.5px; color: #8a5311;
     background: #fff9ec; border-radius: 10px; padding: 10px 13px;
   }
+  .rss-fulltext { margin-top: 14px; font-size: 13px; color: var(--text-soft); }
+  .rss-fulltext summary { cursor: pointer; color: var(--primary); }
+  .rss-body { margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; }
   .card .footer { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .badge {
     font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
@@ -210,9 +213,16 @@
 <body>
 {% macro entry_card(item, extra=false) -%}
 <article class="card{% if extra %} is-extra{% endif %}" id="{{ item.meta.article_id }}" tabindex="-1">
-  <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
+  <div class="title"><a href="{{ item.meta.reading_url }}"{% if item.meta.link_status != 'rss_only' %} target="_blank" rel="noopener"{% endif %}>{{ item.title }}</a></div>
   {% if item.summary_zh %}<div class="summary">{{ item.summary_zh }}</div>{% endif %}
   {% if item.comment %}<div class="comment">💡 编辑观察：{{ item.comment }}</div>{% endif %}
+  {% if item.meta.link_status == 'rss_only' %}
+  <details class="rss-fulltext" id="rss-full-{{ item.meta.article_id }}">
+    <summary>阅读 RSS 全文 · 原文链接暂不可用</summary>
+    <div class="rss-body">{{ item.meta.rss_full_text }}</div>
+    {% if item.meta.rss_truncated %}<p>RSS 正文较长，此处展示节选。</p>{% endif %}
+  </details>
+  {% endif %}
   <div class="footer">
     <span class="badge">{{ item.source }}</span>
     {% for tag in item.meta.topic_tags|default([]) %}<span class="badge tag">{{ tag }}</span>{% endfor %}
@@ -247,14 +257,18 @@
     <ol class="must-read-list">
       {% for item in must_reads %}
       <li class="must-read">
-        <a class="must-read-title" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+        <a class="must-read-title" href="{{ item.meta.reading_url }}"{% if item.meta.link_status != 'rss_only' %} target="_blank" rel="noopener"{% endif %}>{{ item.title }}</a>
         {% if item.meta.brief_summary and item.meta.brief_summary != item.title %}
         <p class="must-read-summary">{{ item.meta.brief_summary }}</p>
         {% endif %}
         <div class="must-read-meta">
           <span>{{ item.source }}</span>
           <a href="#{{ item.meta.article_id }}">查看摘要 ↓</a>
+          {% if item.meta.link_status == 'rss_only' %}
+          <a href="{{ item.meta.reading_url }}">阅读 RSS 全文 ↓</a>
+          {% else %}
           <a href="{{ item.url }}" target="_blank" rel="noopener">阅读原文 ↗</a>
+          {% endif %}
         </div>
       </li>
       {% endfor %}
@@ -376,8 +390,10 @@
     });
   });
   function revealArticle() {
-    const article = document.getElementById(location.hash.slice(1));
-    if (!article || !article.classList.contains('card')) return;
+    const target = document.getElementById(location.hash.slice(1));
+    const article = target?.closest('.card');
+    if (!article) return;
+    if (target.tagName === 'DETAILS') target.open = true;
     const panel = article.closest('.paper-topic-panel');
     if (panel) {
       const tab = document.getElementById(panel.getAttribute('aria-labelledby'));
@@ -391,7 +407,7 @@
     article.scrollIntoView({block: 'start'});
   }
   window.addEventListener('hashchange', revealArticle);
-  document.querySelectorAll('.must-read-meta a[href^="#"]').forEach((link) => {
+  document.querySelectorAll('.must-read-meta a[href^="#"], .must-read-title[href^="#"], .card .title a[href^="#"]').forEach((link) => {
     link.addEventListener('click', () => {
       if (location.hash === link.getAttribute('href')) revealArticle();
     });

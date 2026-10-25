@@ -255,7 +255,9 @@ def test_chinese_uses_global_timeout_and_merges_queries_without_id_collisions(mo
 
     def engine(script, args, timeout):
         calls.append((args, timeout))
-        return {"zhihu": [first] if args[0] == "Qwen 部署" else [second, richer]}
+        assert script.name == "cn_engine_runner.py"
+        assert Path(args[0]) == Path("engine/scripts/main.py")
+        return {"zhihu": [first] if args[1] == "Qwen 部署" else [second, richer]}
 
     monkeypatch.setattr(last30days_sources, "_run_engine", engine)
     result = last30days_sources._collect_chinese(cfg, date(2026, 10, 17), source_cfg)

@@ -39,6 +39,29 @@ def test_status_file_is_machine_readable(cfg):
     assert '"collected_items": 3' in path.read_text(encoding="utf-8")
 
 
+def test_rss_only_story_opens_escaped_feed_text_instead_of_search_page(cfg):
+    news = NewsItem(
+        "rss-only", "media", "AI 实验记录", "https://weixin.sogou.com/weixin?type=2&query=AI",
+        "机器之心", text="AI 实验配置与复现步骤。" * 30,
+        summary_zh="这份实验记录提供了具体配置与实验结果。", importance=5,
+        meta={"link_status": "rss_only", "rss_full_text": "第一段\n\n<script>untrusted</script>",
+              "quality_score": 90},
+    )
+    path = render(cfg, [news], [], datetime(2026, 10, 25, tzinfo=ZoneInfo("Asia/Shanghai")),
+                  update_latest=False)
+    html = path.read_text(encoding="utf-8")
+    soup = BeautifulSoup(html, "html.parser")
+    card = soup.select_one("#section-media article")
+    detail = card.select_one("details.rss-fulltext")
+    assert card.select_one(".title a")["href"] == "#" + detail["id"]
+    assert "原文链接暂不可用" in detail.get_text()
+    assert "&lt;script&gt;untrusted&lt;/script&gt;" in html
+    assert "<script>untrusted</script>" not in html
+    assert not soup.select('a[href*="weixin.sogou.com"]')
+    assert soup.select_one(".must-read-title")["href"] == "#" + detail["id"]
+    assert "target.open = true" in html
+
+
 def test_render_limits_single_community_source(cfg):
     for key, section in cfg["sections"].items():
         section["enabled"] = key == "community"

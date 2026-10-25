@@ -1,6 +1,7 @@
 """受限地抓取公开网页并提取可供摘要的正文。"""
 import ipaddress
 import logging
+import re
 import socket
 from urllib.parse import urljoin, urlsplit
 
@@ -35,13 +36,18 @@ def _is_public_url(url: str) -> bool:
     return bool(addresses) and all(address.is_global for address in addresses)
 
 
-def _extract_readable_text(html: str) -> str:
+def _extract_readable_text(html: str, *, selector: str | None = None) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for node in soup.select(
         "script, style, noscript, svg, nav, footer, header, aside, form, dialog"
     ):
         node.decompose()
-    container = soup.find("article") or soup.find("main") or soup.body or soup
+    if selector:
+        container = soup.select_one(selector)
+        if container is None:
+            return ""
+    else:
+        container = soup.find("article") or soup.find("main") or soup.body or soup
     blocks = container.find_all(["h1", "h2", "h3", "p", "li", "blockquote"])
     text = " ".join(block.get_text(" ", strip=True) for block in blocks)
     if not text:
@@ -49,7 +55,9 @@ def _extract_readable_text(html: str) -> str:
     return " ".join(text.split())
 
 
-def extract_text_from_url(url: str, cfg: dict, *, min_chars: int = 160) -> str:
+def extract_text_from_url(
+    url: str, cfg: dict, *, min_chars: int = 160, selector: str | None = None,
+) -> str:
     """提取公开 HTML 正文；拒绝内网地址、超大响应和非文本内容。"""
     current_url = url
     try:
@@ -60,7 +68,10 @@ def extract_text_from_url(url: str, cfg: dict, *, min_chars: int = 160) -> str:
             response = http_get(
                 current_url,
                 cfg=cfg,
-                headers={"User-Agent": "ai-daily-digest/1.0 (article summary)"},
+                headers={"User-Agent": (
+                    "Mozilla/5.0 (compatible; ai-daily-digest/1.0)"
+                    if selector else "ai-daily-digest/1.0 (article summary)"
+                )},
                 allow_redirects=False,
                 stream=True,
                 retries=1,
@@ -86,8 +97,15 @@ def extract_text_from_url(url: str, cfg: dict, *, min_chars: int = 160) -> str:
                     return ""
                 chunks.append(chunk)
             encoding = response.encoding or "utf-8"
+            body = b"".join(chunks)
+            if encoding.lower() == "iso-8859-1":
+                declared = re.search(br'charset=["\']?\s*([\w-]+)', body[:4096], re.I)
+                if declared:
+                    encoding = declared[1].decode("ascii")
             response.close()
-            text = _extract_readable_text(b"".join(chunks).decode(encoding, errors="replace"))
+            text = _extract_readable_text(
+                body.decode(encoding, errors="replace"), selector=selector,
+            )
             return text if len(text) >= min_chars else ""
     except Exception as exc:
         log.warning("网页正文提取失败 [%s]: %s", current_url, exc)

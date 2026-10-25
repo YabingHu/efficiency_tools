@@ -109,6 +109,22 @@ Hacker News 自帖会直接使用帖子正文；高热外链会在通过公网 U
 `content_fetch` 记录补读尝试与成功数；平台 `errors` 只保留 HTTP 状态码等固定类别，
 补充上游仅在 stderr 报错的情况。`empty` 表示引擎未返回候选，不能证明平台访问正常。
 
+中文引擎通过项目内的 `src/cn_engine_runner.py` 加载兼容层，本地和云端使用相同处理，
+不依赖修改被忽略的外部 skill 文件。头条的 `data: null` 会记录 `empty_data`，
+有效的空列表仍视为正常无结果；微博跳转访客登录页记录 `login_required`。
+`non_json_response`、`invalid_response` 和 `search_results_unavailable` 分别表示
+非 JSON 响应、数据结构异常和备用搜索没有返回结果结构。诊断不包含 Cookie、
+响应正文或原始异常消息。平台拒绝访问不会因兼容处理而自动恢复。
+
+「中文媒体」的量子位来源会在摘要前补读 `.article` 正文，每次最多 6 条、3 个并发，
+连接和读取超时分别为 5/10 秒；失败时保留原有 RSS 摘要。上限由
+`sources.rss.content_fetch_limit` 和 `content_workers` 控制，单个 feed 使用
+`fetch_content` 与 `content_selector` 开启和指定正文容器。
+`run-status.json` 的 `source_status.rss.feeds` 记录逐源状态、补读数量和 RSS 全文数量。
+RSS 若只提供搜索页链接且没有有效文章地址，卡片会展开已经收到的 RSS 全文，
+并标注「原文链接暂不可用」，避免将搜索页作为原文入口。历史报告随页面保留全文，
+不依赖额外文件；源站正常提供文章地址时仍使用文章链接。
+
 ## Windows 定时任务
 
 ```powershell
