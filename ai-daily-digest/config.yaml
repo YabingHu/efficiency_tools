@@ -92,9 +92,10 @@ sections:
     max_per_source: 2  # 避免单一厂商更新密集时占满整个板块
   media:
     enabled: true
-    title: "📰 行业媒体"
+    title: "📰 中文媒体"
     subtitle: "新智元 · 量子位 · 机器之心"
     limit: 6
+    max_per_source: 2
   community:
     enabled: true
     title: "🌍 海外社区热议"
@@ -171,6 +172,8 @@ sources:
     lookback_hours: 48
     max_staleness_hours: 96  # 超过该时长未更新的源不再冒充“今日资讯”
     max_items_per_feed: 20
+    content_fetch_limit: 6  # 每个启用正文补读的 feed 最多补读 6 条，避免短 RSS 摘要挤掉来源。
+    content_workers: 3
     workers: 6
     feeds:
       # section 决定该 feed 归入哪个板块（默认 industry），需与上面 sections 的 key 对应
@@ -192,6 +195,8 @@ sources:
       - name: 量子位
         url: https://www.qbitai.com/category/%e8%b5%84%e8%ae%af/feed
         section: media
+        fetch_content: true
+        content_selector: ".article"
       - name: 新智元
         url: https://link.baai.ac.cn/@AI_era.rss
         section: media

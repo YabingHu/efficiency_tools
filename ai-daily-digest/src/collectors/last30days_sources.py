@@ -157,7 +157,14 @@ def _platform_errors(stderr: str) -> dict[str, list[str]]:
                 continue
             if not re.search(r"失败|安全验证|验证码|timed out|TimeoutError|HTTP Error", line):
                 continue
-            code = re.search(r"\b(401|403|429|5\d\d)\b", line)
+            known = re.search(
+                r"\b(login_required|non_json_response|empty_data|invalid_response|"
+                r"search_results_unavailable|network_error)\b", line,
+            )
+            if known:
+                categories.add(known[1])
+                continue
+            code = re.search(r"(?:\b|http_)([45]\d\d)\b", line)
             categories.add(
                 f"http_{code[1]}" if code else
                 "timeout" if re.search(r"超时|timed out|TimeoutError", line) else
@@ -488,8 +495,9 @@ def _collect_chinese(cfg: dict, report_date, source_cfg: dict) -> list[NewsItem]
     timeout = source_cfg.get("timeout_seconds", 150)
 
     def search(query):
-        return _run_engine(script, [
-            query, "--emit", "json", "--quick",
+        runner = Path(__file__).resolve().parents[1] / "cn_engine_runner.py"
+        return _run_engine(runner, [
+            str(script), query, "--emit", "json", "--quick",
             "--days", str(source_cfg.get("lookback_days", 2)),
             "--as-of", report_date.isoformat(),
             "--timeout", str(timeout),  # 上游参数是整个引擎的全局超时。

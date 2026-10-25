@@ -10,6 +10,8 @@ from src.config import load_config, validate_config
     (("llm", "total_timeout_seconds"), 0),
     (("llm", "total_timeout_seconds"), False),
     (("llm", "total_timeout_seconds"), 1201),
+    (("sources", "rss", "content_fetch_limit"), 0),
+    (("sources", "rss", "content_workers"), 7),
     (("must_read", "min_source_chars"), 0),
     (("quality", "min_source_chars", "community"), False),
     (("quality", "min_source_chars", "unknown"), 80),
