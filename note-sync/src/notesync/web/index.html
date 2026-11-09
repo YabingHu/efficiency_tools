@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NoteSync</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface-2: #f8f9fc;
+      --text: #172033;
+      --muted: #697386;
+      --line: #e3e7ef;
+      --primary: #5b56e8;
+      --primary-strong: #4842d2;
+      --primary-soft: #eeedff;
+      --green: #1f9d68;
+      --red: #d94b5d;
+      --shadow: 0 16px 50px rgba(39, 48, 73, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #11141b;
+        --surface: #191d27;
+        --surface-2: #222733;
+        --text: #f4f6fb;
+        --muted: #a7b0c0;
+        --line: #303746;
+        --primary: #8683ff;
+        --primary-strong: #9a97ff;
+        --primary-soft: #292947;
+        --green: #53d39b;
+        --red: #ff7a8a;
+        --shadow: 0 18px 55px rgba(0, 0, 0, .25);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 28px 20px 20px;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 28px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      color: white;
+      font-size: 18px;
+      font-weight: 800;
+      background: linear-gradient(145deg, #7772ff, #4b46cf);
+      box-shadow: 0 8px 20px rgba(91, 86, 232, .28);
+    }
+    .brand-name { font-size: 18px; font-weight: 760; letter-spacing: -.3px; }
+    .brand-sub { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .nav { display: grid; gap: 7px; }
+    .nav-button {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 13px;
+      border: 0;
+      border-radius: 11px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 650;
+      transition: .18s ease;
+    }
+    .nav-button:hover { color: var(--text); background: var(--surface-2); }
+    .nav-button.active { color: var(--primary-strong); background: var(--primary-soft); }
+    .nav-icon { width: 21px; text-align: center; font-size: 16px; }
+    .sidebar-bottom { margin-top: auto; }
+    .sync-chip {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-2);
+    }
+    .dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--muted); }
+    .dot.watching { background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 15%, transparent); }
+    .dot.syncing { background: var(--primary); animation: pulse 1.2s infinite; }
+    .dot.error { background: var(--red); }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .sync-label { min-width: 0; }
+    .sync-label strong { display: block; font-size: 12px; }
+    .sync-label span { display: block; margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .exit-button { width: 100%; margin-top: 10px; padding: 9px; border: 0; color: var(--muted); background: transparent; font-size: 12px; }
+    .exit-button:hover { color: var(--red); }
+    .main { min-width: 0; padding: 46px clamp(28px, 5vw, 76px) 60px; }
+    .page { display: none; max-width: 1100px; margin: 0 auto; animation: rise .25s ease; }
+    .page.active { display: block; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+    .eyebrow { margin-bottom: 9px; color: var(--primary-strong); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 42px); line-height: 1.12; letter-spacing: -1.3px; }
+    .lead { max-width: 680px; margin: 13px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .date-panel {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin: 30px 0 20px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .date-copy strong { display: block; font-size: 14px; }
+    .date-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .date-actions { display: flex; align-items: center; gap: 8px; }
+    .date-input, .input {
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: 0;
+      color: var(--text);
+      background: var(--surface-2);
+      transition: border .18s, box-shadow .18s;
+    }
+    .date-input { padding: 0 11px; }
+    .input { width: 100%; padding: 0 13px; }
+    .input:focus, .date-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+    .icon-button, .secondary-button, .primary-button {
+      border: 0;
+      border-radius: 10px;
+      font-weight: 700;
+      transition: transform .15s, background .15s, opacity .15s;
+    }
+    .icon-button:hover, .secondary-button:hover, .primary-button:hover { transform: translateY(-1px); }
+    .icon-button { width: 38px; height: 38px; color: var(--text); background: var(--surface-2); }
+    .secondary-button { padding: 11px 15px; color: var(--text); background: var(--surface-2); }
+    .primary-button { padding: 11px 17px; color: #fff; background: var(--primary); box-shadow: 0 7px 18px rgba(91, 86, 232, .2); }
+    .primary-button:hover { background: var(--primary-strong); }
+    .primary-button:disabled { cursor: wait; opacity: .55; transform: none; }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .note-card {
+      position: relative;
+      min-height: 285px;
+      display: flex;
+      flex-direction: column;
+      padding: 22px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: 0 10px 35px rgba(39, 48, 73, .05);
+      transition: transform .2s, border .2s, box-shadow .2s;
+    }
+    .note-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--primary) 35%, var(--line)); box-shadow: var(--shadow); }
+    .note-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; font-size: 19px; font-weight: 800; }
+    .daily .note-icon { color: #2563eb; background: #dbeafe; }
+    .weekly .note-icon { color: #16805a; background: #dcfce7; }
+    .monthly .note-icon { color: #8b35b5; background: #f3e8ff; }
+    .note-card h2 { margin: 19px 0 8px; font-size: 19px; letter-spacing: -.3px; }
+    .note-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .note-card .primary-button { width: 100%; margin-top: auto; }
+    .destination {
+      display: grid;
+      grid-template-columns: minmax(150px, 220px) 1fr;
+      gap: 18px;
+      margin-top: 18px;
+      padding: 17px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    .field label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 760; }
+    .path-preview { align-self: center; min-width: 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    .settings-card { margin-top: 28px; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .field.wide { grid-column: 1 / -1; }
+    .field small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
+    .settings-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .info-strip { margin-top: 17px; padding: 14px 16px; border-radius: 12px; color: var(--muted); background: var(--primary-soft); font-size: 12px; line-height: 1.65; }
+    .log-panel { margin-top: 28px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+    .log-header { display: flex; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .log-header strong { font-size: 13px; }
+    .log-header span { color: var(--muted); font-size: 11px; }
+    .log-list { max-height: 480px; overflow: auto; padding: 8px 0; }
+    .log-row { display: grid; grid-template-columns: 72px 1fr; gap: 14px; padding: 11px 20px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+    .log-row:last-child { border-bottom: 0; }
+    .log-time { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .log-message { font-size: 13px; line-height: 1.45; }
+    .empty-log { padding: 60px 20px; color: var(--muted); text-align: center; }
+    .toast {
+      position: fixed;
+      right: 26px;
+      bottom: 24px;
+      max-width: min(420px, calc(100vw - 40px));
+      padding: 13px 16px;
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      font-size: 13px;
+      transition: .22s ease;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { color: var(--red); }
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; width: auto; height: auto; padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand { padding-bottom: 14px; }
+      .nav { grid-template-columns: repeat(3, 1fr); }
+      .nav-button { justify-content: center; }
+      .sidebar-bottom { display: none; }
+      .main { padding: 30px 20px 50px; }
+      .cards { grid-template-columns: 1fr; }
+      .note-card { min-height: 235px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .field.wide { grid-column: auto; }
+    }
+    @media (max-width: 560px) {
+      .nav-button { padding: 10px 6px; font-size: 12px; }
+      .nav-icon { display: none; }
+      .date-panel { align-items: flex-start; flex-direction: column; }
+      .destination { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">N</div>
+        <div><div class="brand-name">NoteSync</div><div class="brand-sub">记录，然后自动同步</div></div>
+      </div>
+      <nav class="nav">
+        <button class="nav-button active" data-page="create"><span class="nav-icon">＋</span>新增笔记</button>
+        <button class="nav-button" data-page="settings"><span class="nav-icon">⌘</span>同步设置</button>
+        <button class="nav-button" data-page="activity"><span class="nav-icon">◷</span>活动记录</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sync-chip">
+          <span class="dot" id="statusDot"></span>
+          <div class="sync-label"><strong id="statusTitle">尚未启动</strong><span id="statusMessage">等待配置 GitHub</span></div>
+        </div>
+        <button class="exit-button" id="shutdownButton">退出 NoteSync</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="page active" id="page-create">
+        <div class="eyebrow">Periodic notes</div>
+        <h1>今天想记录什么？</h1>
+        <p class="lead">选择一种周期，NoteSync 会生成结构清晰的 Markdown 模板，并立即用默认编辑器打开。</p>
+
+        <div class="date-panel">
+          <div class="date-copy"><strong>基准日期</strong><span>周度和月度笔记会根据这个日期归档</span></div>
+          <div class="date-actions">
+            <button class="icon-button" id="previousDay" aria-label="前一天">‹</button>
+            <input class="date-input" id="noteDate" type="date">
+            <button class="icon-button" id="nextDay" aria-label="后一天">›</button>
+            <button class="secondary-button" id="todayButton">今天</button>
+          </div>
+        </div>
+
+        <div class="cards">
+          <article class="note-card daily">
+            <div class="note-icon">日</div><h2>每日笔记</h2>
+            <p>记录当天的想法、进展和待办。文件按年月自动归档。</p>
+            <button class="primary-button create-note" data-kind="daily">创建并打开</button>
+          </article>
+          <article class="note-card weekly">
+            <div class="note-icon">周</div><h2>周度笔记</h2>
+            <p>使用 ISO 周编号，并预先生成周一到周日七个日期标题。</p>
+            <button class="primary-button create-note" data-kind="weekly">创建并打开</button>
+          </article>
+          <article class="note-card monthly">
+            <div class="note-icon">月</div><h2>月度笔记</h2>
+            <p>根据月份实际天数，为每天生成一个 Markdown 二级标题。</p>
+            <button class="primary-button create-note" data-kind="monthly">创建并打开</button>
+          </article>
+        </div>
+
+        <div class="destination">
+          <div class="field"><label for="periodicDirQuick">笔记库内保存目录</label><input class="input" id="periodicDirQuick" value="周期笔记"></div>
+          <div class="path-preview" id="pathPreview">月度示例：周期笔记/月度/2026/2026-11.md</div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="eyebrow">GitHub sync</div>
+        <h1>同步设置</h1>
+        <p class="lead">连接私有 GitHub 仓库后，新增和修改的文件会自动提交、合并并推送。</p>
+        <div class="settings-card">
+          <div class="form-grid">
+            <div class="field wide"><label for="notesDir">本地笔记目录</label><input class="input" id="notesDir" placeholder="/Users/you/Documents/MyNotes"><small>这里可以直接填写现有的 Obsidian Vault 路径</small></div>
+            <div class="field wide"><label for="remoteUrl">GitHub 仓库</label><input class="input" id="remoteUrl" placeholder="git@github.com:your-name/notes.git"><small>推荐使用已配置 SSH Key 的私有仓库</small></div>
+            <div class="field"><label for="branch">同步分支</label><input class="input" id="branch" value="main"></div>
+            <div class="field"><label for="deviceName">设备名称</label><input class="input" id="deviceName"></div>
+            <div class="field"><label for="pollSeconds">检查远端间隔（秒）</label><input class="input" id="pollSeconds" type="number" min="5" value="30"></div>
+            <div class="field"><label for="debounceSeconds">文件停止变化后（秒）</label><input class="input" id="debounceSeconds" type="number" min="1" value="4"></div>
+          </div>
+          <div class="settings-actions">
+            <button class="primary-button" id="startButton">保存并启动</button>
+            <button class="secondary-button" id="syncButton">立即同步</button>
+            <button class="secondary-button" id="stopButton">停止同步</button>
+            <button class="secondary-button" id="openFolderButton">打开笔记目录</button>
+          </div>
+        </div>
+        <div class="info-strip">后台 Git 不会弹出密码输入框。请提前配置 GitHub SSH Key 或系统凭据管理器。NoteSync 发现同文件冲突时会保存双方版本，不会静默覆盖。</div>
+      </section>
+
+      <section class="page" id="page-activity">
+        <div class="eyebrow">Local activity</div>
+        <h1>活动记录</h1>
+        <p class="lead">笔记创建、上传、下载和冲突处理都会出现在这里。</p>
+        <div class="log-panel">
+          <div class="log-header"><strong>最近活动</strong><span>最多保留 200 条</span></div>
+          <div class="log-list" id="logList"><div class="empty-log">正在读取活动记录…</div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const TOKEN = "__NOTESYNC_TOKEN__";
+    const $ = (id) => document.getElementById(id);
+    let currentConfig = {};
+    let lastSequence = -1;
+    let toastTimer;
+
+    function localToday() {
+      const now = new Date();
+      const offset = now.getTimezoneOffset() * 60000;
+      return new Date(now - offset).toISOString().slice(0, 10);
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", "X-NoteSync-Token": TOKEN, ...(options.headers || {}) }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "操作失败");
+      return data;
+    }
+
+    function toast(message, error = false) {
+      const node = $("toast");
+      node.textContent = message;
+      node.classList.toggle("error", error);
+      node.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => node.classList.remove("show"), 3200);
+    }
+
+    function showPage(name) {
+      document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === `page-${name}`));
+      document.querySelectorAll(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.page === name));
+    }
+
+    function readSettings() {
+      return {
+        notes_dir: $("notesDir").value.trim(),
+        remote_url: $("remoteUrl").value.trim(),
+        branch: $("branch").value.trim(),
+        device_name: $("deviceName").value.trim(),
+        remote_poll_seconds: Number($("pollSeconds").value),
+        debounce_seconds: Number($("debounceSeconds").value),
+        periodic_notes_dir: $("periodicDirQuick").value.trim()
+      };
+    }
+
+    function fillSettings(config) {
+      currentConfig = config;
+      $("notesDir").value = config.notes_dir || "";
+      $("remoteUrl").value = config.remote_url || "";
+      $("branch").value = config.branch || "main";
+      $("deviceName").value = config.device_name || "device";
+      $("pollSeconds").value = config.remote_poll_seconds || 30;
+      $("debounceSeconds").value = config.debounce_seconds || 4;
+      $("periodicDirQuick").value = config.periodic_notes_dir || "周期笔记";
+      updatePathPreview();
+    }
+
+    function updatePathPreview() {
+      const selected = $("noteDate").value || localToday();
+      const month = selected.slice(0, 7);
+      const year = selected.slice(0, 4);
+      const base = $("periodicDirQuick").value.trim() || "周期笔记";
+      $("pathPreview").textContent = `月度示例：${base}/月度/${year}/${month}.md`;
+    }
+
+    function shiftDate(days) {
+      const source = new Date(`${$("noteDate").value || localToday()}T12:00:00`);
+      source.setDate(source.getDate() + days);
+      const offset = source.getTimezoneOffset() * 60000;
+      $("noteDate").value = new Date(source - offset).toISOString().slice(0, 10);
+      updatePathPreview();
+    }
+
+    async function createNote(kind, button) {
+      const settings = readSettings();
+      if (!settings.notes_dir) {
+        toast("请先在“同步设置”中填写本地笔记目录", true);
+        showPage("settings");
+        $("notesDir").focus();
+        return;
+      }
+      button.disabled = true;
+      const oldText = button.textContent;
+      button.textContent = "正在创建…";
+      try {
+        const result = await api("/api/notes", {
+          method: "POST",
+          body: JSON.stringify({ ...settings, kind, date: $("noteDate").value })
+        });
+        toast(result.created ? `${result.label}已创建并打开` : "文件已存在，已为你打开且没有覆盖");
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    }
+
+    async function refreshStatus() {
+      try {
+        const data = await api("/api/status");
+        const dot = $("statusDot");
+        dot.className = `dot ${data.state}`;
+        $("statusTitle").textContent = data.running ? "后台同步中" : data.state === "error" ? "同步异常" : "尚未启动";
+        $("statusMessage").textContent = data.message;
+        if (data.sequence !== lastSequence) {
+          lastSequence = data.sequence;
+          const list = $("logList");
+          list.replaceChildren();
+          [...data.logs].reverse().forEach((item) => {
+            const row = document.createElement("div");
+            row.className = "log-row";
+            const time = document.createElement("div");
+            time.className = "log-time";
+            time.textContent = item.time;
+            const message = document.createElement("div");
+            message.className = "log-message";
+            message.textContent = item.message;
+            row.append(time, message);
+            list.append(row);
+          });
+        }
+      } catch (_) {
+        $("statusDot").className = "dot error";
+        $("statusTitle").textContent = "连接中断";
+        $("statusMessage").textContent = "本地服务可能已退出";
+      }
+    }
+
+    document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => showPage(button.dataset.page)));
+    document.querySelectorAll(".create-note").forEach((button) => button.addEventListener("click", () => createNote(button.dataset.kind, button)));
+    $("previousDay").addEventListener("click", () => shiftDate(-1));
+    $("nextDay").addEventListener("click", () => shiftDate(1));
+    $("todayButton").addEventListener("click", () => { $("noteDate").value = localToday(); updatePathPreview(); });
+    $("noteDate").addEventListener("change", updatePathPreview);
+    $("periodicDirQuick").addEventListener("input", updatePathPreview);
+
+    $("startButton").addEventListener("click", async () => {
+      try {
+        const data = await api("/api/start", { method: "POST", body: JSON.stringify(readSettings()) });
+        fillSettings(data.config);
+        toast("配置已保存，后台同步已启动");
+        refreshStatus();
+      } catch (error) { toast(error.message, true); }
+    });
+    $("syncButton").addEventListener("click", async () => {
+      try { await api("/api/sync", { method: "POST", body: "{}" }); toast("已请求立即同步"); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("stopButton").addEventListener("click", async () => {
+      try { await api("/api/stop", { method: "POST", body: "{}" }); toast("后台同步已停止"); refreshStatus(); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("openFolderButton").addEventListener("click", async () => {
+      try { await api("/api/open-folder", { method: "POST", body: JSON.stringify({ notes_dir: $("notesDir").value }) }); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("shutdownButton").addEventListener("click", async () => {
+      if (!confirm("退出 NoteSync 后，后台自动同步也会停止。确定退出吗？")) return;
+      try { await api("/api/shutdown", { method: "POST", body: "{}" }); document.body.innerHTML = '<main style="padding:64px;text-align:center"><h1>NoteSync 已退出</h1><p style="color:var(--muted)">现在可以关闭这个页面。</p></main>'; }
+      catch (error) { toast(error.message, true); }
+    });
+
+    (async function init() {
+      $("noteDate").value = localToday();
+      try { fillSettings(await api("/api/config")); }
+      catch (error) { toast(error.message, true); }
+      await refreshStatus();
+      setInterval(refreshStatus, 1200);
+    })();
+  </script>
+</body>
+</html>

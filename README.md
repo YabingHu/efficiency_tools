@@ -8,6 +8,21 @@
 |------|------|--------|
 | [workbench](./workbench) | 工作台 — 四象限任务管理、每日任务、团队任务跟进 | React + Vite |
 | [ai-daily-digest](./ai-daily-digest) | AI 每日早报 — 抓取 LLM 领域资讯，生成中文摘要早报 HTML | Python |
+| [note-sync](./note-sync) | NoteSync — 用 GitHub 在多台电脑间无感同步 Markdown 与图片 | Python + Git |
+
+---
+
+## note-sync · GitHub 笔记同步
+
+> 通过本机网页创建每日/周度/月度 Markdown，自动监听笔记目录并完成 Git 提交、拉取与推送
+
+```bash
+cd note-sync
+PYTHONPATH=src python3 -m notesync
+```
+
+macOS 也可以双击 `note-sync/run-macos.command`。首次使用与 GitHub SSH 配置见
+[note-sync/README.md](./note-sync/README.md)。
 
 ---
 
