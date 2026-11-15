@@ -180,18 +180,22 @@ sources:
       - name: OpenAI Blog
         url: https://openai.com/news/rss.xml
         section: industry
+        first_party: true
       - name: Google AI Blog
         url: https://blog.google/technology/ai/rss/
         section: industry
+        first_party: true
       - name: DeepMind Blog
         url: https://deepmind.google/blog/rss.xml
         section: industry
+        first_party: true
       - name: HuggingFace Blog
         url: https://huggingface.co/blog/feed.xml
         section: industry
       - name: NVIDIA AI Blog
         url: https://blogs.nvidia.com/feed/
         section: industry
+        first_party: true
       - name: 量子位
         url: https://www.qbitai.com/category/%e8%b5%84%e8%ae%af/feed
         section: media

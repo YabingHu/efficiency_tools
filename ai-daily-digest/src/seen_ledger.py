@@ -16,6 +16,7 @@ import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
+from .events import MILESTONES
 from .models import NewsItem
 from .utils import canonical_url, safe_http_url
 
@@ -46,7 +47,7 @@ class SeenLedger:
             raw_entries = document.get("entries", {})
             if not isinstance(raw_entries, dict):
                 raise ValueError("entries 不是对象")
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError, AttributeError) as exc:
             log.warning("跨天去重台账无法读取，本次不去重: %s", exc)
             return {}
 
@@ -78,12 +79,37 @@ class SeenLedger:
     def _is_recent_duplicate(
         self, item: NewsItem, window_start: date, report_date: date
     ) -> bool:
+        event = item.meta.get("event_key")
+        if event:
+            prefix = f"event:{event}|"
+            previous = [
+                (key[len(prefix):].split("|", 1)[0], value)
+                for key, value in self._entries.items()
+                if key.startswith(prefix)
+                and window_start.isoformat() <= value < report_date.isoformat()
+            ]
+            if previous:
+                published = {milestone for milestone, _ in previous}
+                additions = [
+                    {"label": MILESTONES[key][0], **source}
+                    for key, source in item.meta["event_milestones"].items()
+                    if key not in published
+                ]
+                if additions:
+                    item.meta["follow_up_date"] = max(value for _, value in previous)
+                    item.meta["follow_up_changes"] = additions
+                return not additions
         for key in _entry_keys(item):
             seen = self._entries.get(key)
             if seen is None:
                 continue
             seen_date = date.fromisoformat(seen)
             if window_start <= seen_date < report_date:
+                if event and any(
+                    alias.startswith(f"event-alias:{seen}|") and alias.endswith(f"|{key}")
+                    for alias in self._entries
+                ):
+                    continue
                 return True
         return False
 
@@ -91,7 +117,13 @@ class SeenLedger:
         """把本期真正展示的条目登记为“已见”，日期用报告日。"""
         iso = report_date.isoformat()
         for item in items:
-            for key in _entry_keys(item):
+            keys = _entry_keys(item)
+            if event := item.meta.get("event_key"):
+                aliases = {f"event-alias:{iso}|{event}|{key}" for key in keys}
+                milestones = {"release", *item.meta["event_milestones"]}
+                keys.update(aliases)
+                keys.update(f"event:{event}|{milestone}|{iso}" for milestone in milestones)
+            for key in keys:
                 if self._entries.get(key) != iso:
                     self._entries[key] = iso
                     self._dirty = True

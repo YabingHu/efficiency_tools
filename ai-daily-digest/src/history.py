@@ -59,6 +59,9 @@ def sync_history(
     shutil.copyfile(source, history_dir / report_name)
 
     cutoff = report_date - timedelta(days=retention_days - 1)
+    for path in (history_dir / "editorial").glob("*.json"):
+        if (parsed_date := _report_date(path)) is not None and parsed_date < cutoff:
+            path.unlink()
     retained: list[tuple[date, Path]] = []
     for path in history_dir.glob("*.html"):
         parsed_date = _report_date(path)

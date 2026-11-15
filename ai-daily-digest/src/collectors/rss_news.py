@@ -68,6 +68,9 @@ def collect(cfg: dict, today) -> list[NewsItem]:
             log.warning("RSS [%s] 拉取失败: %s", name, e)
             return name, [], {"status": "failed"}
 
+        if not feed.entries:
+            is_feed = bool(getattr(feed, "version", "")) and not getattr(feed, "bozo", False)
+            return name, [], {"status": "empty" if is_feed else "failed"}
         dated = []
         for entry in feed.entries:
             published = _entry_time(entry)
@@ -99,7 +102,7 @@ def collect(cfg: dict, today) -> list[NewsItem]:
             if not link or not title:
                 continue
             article_link = _article_link(entry)
-            meta = {"published": ts.isoformat()}
+            meta = {"published": ts.isoformat(), "first_party": feed_cfg.get("first_party", False)}
             if article_link:
                 link = article_link
             elif _is_search_link(link):

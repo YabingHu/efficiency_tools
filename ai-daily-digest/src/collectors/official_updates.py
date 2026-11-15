@@ -128,7 +128,7 @@ PARSERS = {
 }
 
 
-def _collect_site(cfg: dict, site_cfg: dict, as_of: datetime) -> tuple[str, list[NewsItem]]:
+def _collect_site(cfg: dict, site_cfg: dict, as_of: datetime) -> tuple[str, list[NewsItem], str]:
     name = site_cfg["name"]
     parser = PARSERS[site_cfg["parser"]]
     url = site_cfg["url"]
@@ -138,19 +138,19 @@ def _collect_site(cfg: dict, site_cfg: dict, as_of: datetime) -> tuple[str, list
         rows = parser(BeautifulSoup(response.text, "html.parser"), url)
     except Exception as exc:
         log.warning("官方更新 [%s] 拉取失败: %s", name, exc)
-        return name, []
+        return name, [], "failed"
 
     dated = [row for row in rows if row.get("date") and row["date"] <= as_of]
     newest = max((row["date"] for row in dated), default=None)
     if newest is None:
         log.warning("官方更新 [%s] 缺少可用发布时间", name)
-        return name, []
+        return name, [], "undated"
 
     source_cfg = cfg["sources"]["official_updates"]
     max_staleness = timedelta(hours=source_cfg.get("max_staleness_hours", 120))
     if as_of - newest > max_staleness:
         log.info("官方更新 [%s] 暂无近期内容", name)
-        return name, []
+        return name, [], "stale"
     cutoff = newest - timedelta(hours=source_cfg.get("lookback_hours", 72))
 
     items = []
@@ -175,12 +175,12 @@ def _collect_site(cfg: dict, site_cfg: dict, as_of: datetime) -> tuple[str, list
             source=name,
             text=text[:1600],
             score=1,
-            meta={"published": row["date"].isoformat()},
+            meta={"published": row["date"].isoformat(), "first_party": True},
         ))
         if len(items) >= site_cfg.get("max_items", 8):
             break
     log.info("官方更新 [%s] 收到 %d 条", name, len(items))
-    return name, items
+    return name, items, "ok" if items else "empty"
 
 
 def collect(cfg: dict, today) -> list[NewsItem]:
@@ -191,7 +191,10 @@ def collect(cfg: dict, today) -> list[NewsItem]:
         return []
     as_of = report_end_utc(today, cfg.get("timezone", "Asia/Shanghai"))
     items = []
+    statuses = {}
     for site_cfg in source_cfg.get("sites", []):
-        _, site_items = _collect_site(cfg, site_cfg, as_of)
+        name, site_items, status = _collect_site(cfg, site_cfg, as_of)
+        statuses[name] = {"status": status, "received": len(site_items)}
         items.extend(site_items)
+    cfg.setdefault("_collector_status", {})["official_updates"] = {"sites": statuses}
     return items

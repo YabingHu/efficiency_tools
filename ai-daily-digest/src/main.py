@@ -32,8 +32,12 @@ from .editorial import (
     apply_quality_scores,
     collapse_near_duplicates,
     filter_noise_items,
+    normalize_engagement,
+    quality_sort_key,
 )
+from .events import annotate_event, merge_event_sources
 from .renderer import check_template, must_read_items, render, selected_items, write_status
+from .run_diagnostics import mark_dropped, write_editorial_log
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
 from .topics import paper_topic_sections, route_paper_topics
@@ -125,22 +129,35 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
     return [item for name in selected for item in results.get(name, [])], diagnostics
 
 
-def deduplicate(items: list, enabled_sections: set[str]) -> list:
+def deduplicate(items: list, enabled_sections: set[str], *, match_events: bool = False) -> list:
     """过滤禁用板块/危险 URL，并按 ID 与规范化 URL 去重。"""
-    seen, deduped = set(), []
-    for item in sorted(items, key=lambda value: 0 if value.section == "papers" else 1):
+    ids, urls, deduped, valid = {}, {}, [], []
+    for item in items:
         if item.section not in enabled_sections:
+            item.meta["selection_stage"] = "section_disabled"
             continue
         safe_url = safe_http_url(item.url)
         if safe_url is None:
             logging.getLogger("main").warning("跳过非 HTTP(S) 链接: %s", item.url)
+            item.meta["selection_stage"] = "invalid_url"
             continue
         item.url = safe_url
-        url_key = canonical_url(safe_url)
-        if item.id in seen or url_key in seen:
+        if match_events:
+            annotate_event(item)
+        valid.append(item)
+    ordered = sorted(valid, key=lambda value: (
+        value.section != "papers",
+        not (value.meta.get("event_key") and value.meta.get("first_party")),
+    ))
+    for item in ordered:
+        url_key = canonical_url(item.url)
+        if lead := ids.get(item.id) or urls.get(url_key):
+            item.meta.update(selection_stage="merged_id_or_url", merged_into=id(lead))
+            if item.meta.get("event_key") and item.meta["event_key"] == lead.meta.get("event_key"):
+                merge_event_sources(lead, item)
             continue
-        seen.add(item.id)
-        seen.add(url_key)
+        ids[item.id] = item
+        urls[url_key] = item
         deduped.append(item)
     return deduped
 
@@ -164,7 +181,12 @@ def trim_items(cfg: dict, items: list) -> list:
             continue
         section_items = [item for item in items if item.section == key]
         cap = sec_cfg.get("limit", 8) * 2
-        if any(item.score for item in section_items):
+        if section_items and "engagement_percentile" in section_items[0].meta:
+            section_items.sort(
+                key=lambda item: (quality_sort_key(item), item.meta.get("relevance_score", 0)),
+                reverse=True,
+            )
+        elif any(item.score for item in section_items):
             section_items.sort(key=lambda item: item.score, reverse=True)
         max_per_source = sec_cfg.get("max_per_source")
         if max_per_source:
@@ -222,6 +244,7 @@ def main():
         report_date = datetime.now(tz)
     # 跨天去重与 latest.html 一样只对当天报告生效：历史回补不得污染实时台账。
     is_current = report_date.date() == datetime.now(tz).date()
+    live_diagnostics = is_current and not args.no_llm
     log.info("===== 开始生成 %s 早报 =====", report_date.strftime("%Y-%m-%d"))
 
     # 1. 抓取（单源失败不影响整体）
@@ -230,6 +253,9 @@ def main():
 
     if not items:
         log.error("所有来源均无数据，退出")
+        diagnostics["source_health"] = write_editorial_log(
+            cfg, report_date.date(), diagnostics, [], [], [], live=live_diagnostics, success=False,
+        )
         write_status(
             cfg,
             {
@@ -250,7 +276,10 @@ def main():
         key for key, section in cfg["sections"].items()
         if section.get("enabled", True)
     }
-    deduped = deduplicate(items, enabled_sections)
+    match_events = cfg.get("dedup", {}).get("cross_source", {}).get("enabled", True)
+    deduped = deduplicate(items, enabled_sections, match_events=match_events)
+    normalize_engagement(deduped)
+    apply_quality_scores(deduped)
     log.info("去重后共 %d 条（原 %d 条）", len(deduped), len(items))
 
     # 2.1 跨来源近似去重：在预裁剪前及时移除同一事件的重复卡片。
@@ -267,16 +296,22 @@ def main():
             dedup_cfg.get("window_days", 7),
         )
         before = len(deduped)
-        deduped = ledger.filter_unseen(deduped, report_date.date())
+        unseen = ledger.filter_unseen(deduped, report_date.date())
+        mark_dropped(deduped, unseen, "seen_in_previous_issue")
+        deduped = unseen
         log.info("跨天去重后 %d 条（原 %d 条）", len(deduped), before)
 
     # 3. 先排除弱相关与缺少素材的内容，避免高热度噪声占掉预裁剪名额。
     before_quality = len(deduped)
-    deduped = filter_noise_items(cfg, deduped, stage="pre_llm")
+    filtered = filter_noise_items(cfg, deduped, stage="pre_llm")
+    mark_dropped(deduped, filtered, "pre_summary_quality")
+    deduped = filtered
     pre_quality_dropped = before_quality - len(deduped)
     log.info("质量过滤后送入摘要 %d 条（原 %d 条）", len(deduped), before_quality)
     # 每板块最多保留 limit*2 条，控制 token 消耗。
-    deduped = trim_items(cfg, deduped)
+    candidates = trim_items(cfg, deduped)
+    mark_dropped(deduped, candidates, "summary_candidate_limit")
+    deduped = candidates
     log.info("预裁剪后送入摘要 %d 条", len(deduped))
 
     # 4. 生成单条摘要；必读从质量过滤后的最终展示条目选取，不再额外调用模型。
@@ -297,7 +332,9 @@ def main():
         }
     apply_quality_scores(deduped)
     before_post_quality = len(deduped)
-    deduped = filter_noise_items(cfg, deduped, stage="post_llm")
+    filtered = filter_noise_items(cfg, deduped, stage="post_llm")
+    mark_dropped(deduped, filtered, "post_summary_quality")
+    deduped = filtered
     post_quality_dropped = before_post_quality - len(deduped)
     log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
 
@@ -306,10 +343,17 @@ def main():
         cfg, deduped, [], report_date,
         update_latest=is_current,
     )
+    published = selected_items(cfg, deduped)
+    must_reads = must_read_items(cfg, deduped)
+    mark_dropped(deduped, published, "section_limit")
+    diagnostics["source_health"] = write_editorial_log(
+        cfg, report_date.date(), diagnostics, items, published, must_reads,
+        live=live_diagnostics, success=True,
+    )
 
     # 6. 把本期真正展示的条目登记进跨天去重台账，供后续几天抑制重复
     if ledger is not None:
-        ledger.record(selected_items(cfg, deduped), report_date.date())
+        ledger.record(published, report_date.date())
         ledger.prune(report_date.date())
         ledger.save_safely()
 
@@ -328,7 +372,8 @@ def main():
                 "pre_llm": pre_quality_dropped,
                 "post_llm": post_quality_dropped,
             },
-            "must_reads": len(must_read_items(cfg, deduped)),
+            "published_items": len(published),
+            "must_reads": len(must_reads),
             **diagnostics,
             "section_counts": {
                 key: sum(item.section == key for item in deduped)

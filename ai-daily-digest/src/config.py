@@ -201,8 +201,9 @@ def validate_config(cfg: dict) -> None:
         if not isinstance(feed, dict) or not str(feed.get("name", "")).strip():
             raise ValueError(f"{path}.name 不能为空")
         _http_url(feed.get("url"), f"{path}.url")
-        if not isinstance(feed.get("fetch_content", False), bool):
-            raise ValueError(f"{path}.fetch_content 必须是布尔值")
+        for key in ("fetch_content", "first_party"):
+            if not isinstance(feed.get(key, False), bool):
+                raise ValueError(f"{path}.{key} 必须是布尔值")
         if "content_selector" in feed and (
             not isinstance(feed["content_selector"], str) or not feed["content_selector"].strip()
         ):

@@ -50,10 +50,14 @@ def _atomic_write_text(path: Path, content: str) -> None:
 
 def write_status(cfg: dict, status: dict) -> Path:
     out_dir = Path(cfg["_root"]) / cfg.get("output_dir", "output")
-    out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "run-status.json"
-    _atomic_write_text(path, json.dumps(status, ensure_ascii=False, indent=2) + "\n")
+    write_json(path, status)
     return path
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
 def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -> Path:
@@ -171,7 +175,10 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
         )
     must_reads = must_read_items(cfg, items)
     for item in must_reads:
-        summary = " ".join(item.summary_zh.split())
+        changes = item.meta.get("follow_up_changes")
+        summary = "本次新增 " + "、".join(change["label"] for change in changes) if changes else (
+            " ".join(item.summary_zh.split())
+        )
         item.meta["brief_summary"] = summary if len(summary) <= 100 else summary[:99] + "…"
 
     paper_keys = _paper_section_keys(cfg)

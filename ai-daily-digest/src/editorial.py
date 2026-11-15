@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import math
 import re
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
+from .events import annotate_event, merge_event_sources
 from .models import NewsItem
 
 AI_TERMS = (
@@ -109,6 +111,23 @@ def _score_heat(score: float) -> float:
     return min(12, math.log10(score + 1) * 5)
 
 
+def normalize_engagement(items: list[NewsItem]) -> None:
+    """Rank positive engagement against the same platform's candidates."""
+    by_source: dict[str, list[NewsItem]] = defaultdict(list)
+    sections = {"papers", "github", "community", "community_cn"}
+    for item in items:
+        item.meta["engagement_percentile"] = 0.0
+        if item.section in sections and item.score > 0:
+            by_source[item.source].append(item)
+    for candidates in by_source.values():
+        scores = sorted(item.score for item in candidates)
+        for item in candidates:
+            left = bisect_left(scores, item.score)
+            right = bisect_right(scores, item.score)
+            percentile = (left + right) / (2 * len(scores))
+            item.meta["engagement_percentile"] = round(percentile, 4)
+
+
 def score_item_quality(item: NewsItem) -> float:
     """Compute a stable editorial quality score and store reasons in metadata."""
     text = _haystack(item)
@@ -118,11 +137,11 @@ def score_item_quality(item: NewsItem) -> float:
     if item.importance:
         score += item.importance * 9
         reasons.append(f"重要度 {item.importance}")
-    if item.score:
-        heat = _score_heat(float(item.score))
-        score += heat
-        if heat >= 4:
-            reasons.append("来源热度高")
+    percentile = item.meta.get("engagement_percentile")
+    heat = percentile * 4 if percentile is not None else _score_heat(float(item.score))
+    score += heat
+    if heat >= 3:
+        reasons.append("站内热度较高" if percentile is not None else "来源热度高")
     if item.summary_zh and len(item.summary_zh.strip()) >= 80:
         score += 7
         reasons.append("信息量充足")
@@ -149,7 +168,7 @@ def score_item_quality(item: NewsItem) -> float:
             reasons.append("项目描述为空")
         if not item.meta.get("stars_today") and item.score < 50:
             score -= 8
-    if item.section in {"community", "community_cn"}:
+    if percentile is None and item.section in {"community", "community_cn"}:
         comments = item.meta.get("comments") or 0
         if comments:
             score += min(6, math.log10(float(comments) + 1) * 4)
@@ -234,7 +253,7 @@ def quality_sort_key(item: NewsItem) -> tuple[float, int, float]:
     return (
         float(item.meta.get("quality_score", 0)),
         int(item.importance or 0),
-        float(item.score or 0),
+        float(item.meta.get("engagement_percentile", item.score or 0)),
     )
 
 
@@ -317,34 +336,48 @@ def near_duplicate_similarity(left: NewsItem, right: NewsItem) -> float:
     return len(overlap) / len(left_terms | right_terms)
 
 
-def _near_duplicate_rank(item: NewsItem) -> tuple[float, int, float, int]:
+def _near_duplicate_rank(item: NewsItem) -> tuple[bool, float, int, float, int]:
     quality = item.meta.get("quality_score")
     quality_score = float(quality) if quality is not None else -1.0
     return (
+        bool(item.meta.get("first_party")),
         quality_score,
         int(item.importance or 0),
-        float(item.score or 0),
+        float(item.meta.get("engagement_percentile", item.score or 0)),
         SECTION_PRIORITY.get(item.section, 0),
     )
 
 
 def collapse_near_duplicates(items: list[NewsItem], *, similarity: float = 0.6) -> list[NewsItem]:
-    """折叠不同板块的近似资讯，保留质量更高的条目。"""
+    """Merge recognized releases, retaining the legacy fallback for other stories."""
+    for item in items:
+        annotate_event(item)
     kept: list[NewsItem] = []
     for item in items:
+        event_key = item.meta.get("event_key")
         duplicate_index = next(
             (
                 index for index, existing in enumerate(kept)
-                if item.section != existing.section
-                and near_duplicate_similarity(item, existing) >= similarity
+                if (
+                    (event_key and event_key == existing.meta.get("event_key"))
+                    or (
+                        not (event_key or existing.meta.get("event_key"))
+                        and item.section != existing.section
+                        and near_duplicate_similarity(item, existing) >= similarity
+                    )
+                )
             ),
             None,
         )
         if duplicate_index is None:
             kept.append(item)
             continue
-        if _near_duplicate_rank(item) > _near_duplicate_rank(kept[duplicate_index]):
-            kept[duplicate_index] = item
+        existing = kept[duplicate_index]
+        lead, other = sorted((existing, item), key=_near_duplicate_rank, reverse=True)
+        if lead.meta.get("event_key") and lead.meta["event_key"] == other.meta.get("event_key"):
+            merge_event_sources(lead, other)
+        other.meta.update(selection_stage="merged_event", merged_into=id(lead))
+        kept[duplicate_index] = lead
     return kept
 
 
