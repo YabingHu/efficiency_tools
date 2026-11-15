@@ -118,7 +118,7 @@ def _named_terms(text: str) -> set[str]:
 def _source_mismatch(item: NewsItem) -> bool:
     """Flag conflicting subjects only when both sides provide explicit names."""
     headline = _named_terms(item.title)
-    return len(headline) >= 2 and len(item.text.strip()) >= 40 and (
+    return item.section == "media" and len(headline) >= 2 and len(item.text.strip()) >= 40 and (
         bool(_named_terms(item.text)) and not any(term in item.text.casefold() for term in headline)
     )
 
@@ -253,6 +253,10 @@ class Summarizer:
         self.max_retries = llm.get("max_retries", 2)
         self.temperature = llm.get("temperature", 0.3)
         self.max_output_tokens = llm.get("max_output_tokens", 4096)
+        self.request_options = (
+            {"extra_body": {"enable_thinking": llm["enable_thinking"]}}
+            if "enable_thinking" in llm else {}
+        )
         self.request_timeout_seconds = llm.get("timeout_seconds", 60)
         self.total_timeout_seconds = llm.get("total_timeout_seconds", 900)
         self._deadline = None
@@ -293,6 +297,7 @@ class Summarizer:
                     temperature=self.temperature,
                     max_tokens=self.max_output_tokens,
                     timeout=timeout,
+                    **self.request_options,
                 )
                 if getattr(resp, "usage", None):
                     log.info("LLM 本次调用 token: %s", resp.usage.total_tokens)

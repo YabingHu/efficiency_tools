@@ -157,6 +157,8 @@ def validate_config(cfg: dict) -> None:
     _http_url(llm.get("base_url"), "llm.base_url")
     if not isinstance(llm.get("model"), str) or not llm["model"].strip():
         raise ValueError("llm.model 不能为空")
+    if "enable_thinking" in llm and not isinstance(llm["enable_thinking"], bool):
+        raise ValueError("llm.enable_thinking 必须是布尔值")
     _positive_int(llm.get("batch_size", 12), "llm.batch_size", maximum=50)
     _positive_int(llm.get("timeout_seconds", 60), "llm.timeout_seconds", maximum=600)
     _positive_int(

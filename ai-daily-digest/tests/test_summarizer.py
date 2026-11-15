@@ -23,6 +23,7 @@ def _make_summarizer(tmp_path):
     summarizer._deadline = None
     summarizer.budget_exhausted = False
     summarizer.max_input_chars_per_item = 2400
+    summarizer.request_options = {}
     summarizer.cache_retention_days = 30
     summarizer.cache_path = tmp_path / "history" / "summary-cache.json"
     summarizer._cache, summarizer._cache_dirty = summarizer._load_cache()
@@ -137,6 +138,26 @@ def test_suspicious_source_body_is_not_sent_for_summary_or_used_as_fallback(tmp_
 
     assert story.meta["grounding_status"] == "source_mismatch"
     assert "OptiMer" not in story.summary_zh
+
+
+def test_thinking_option_is_passed_as_provider_extension(cfg, monkeypatch):
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="stop", message=SimpleNamespace(content="[]"),
+        )])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr("src.summarizer.OpenAI", lambda **_: client)
+    monkeypatch.setattr("src.summarizer.get_api_key", lambda: "test-key")
+    cfg["llm"]["enable_thinking"] = False
+    assert Summarizer(cfg)._chat("prompt", []) == "[]"
+    assert requests[-1]["extra_body"] == {"enable_thinking": False}
+    del cfg["llm"]["enable_thinking"]
+    assert Summarizer(cfg)._chat("prompt", []) == "[]"
+    assert "extra_body" not in requests[-1]
 
 
 def test_summary_cache_is_reused_across_runs(tmp_path):

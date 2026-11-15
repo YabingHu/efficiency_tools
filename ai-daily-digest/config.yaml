@@ -47,6 +47,7 @@ http:
 llm:
   base_url: https://llm-sd31i4a7ip2ecfyq.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
   model: deepseek-v4-flash-0731
+  enable_thinking: false  # 百炼扩展参数，避免短摘要的推理耗尽输出 token
   batch_size: 3         # 缩小批次，降低空响应及 JSON 截断后的重试成本
   max_retries: 2
   temperature: 0.3
