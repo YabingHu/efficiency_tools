@@ -54,6 +54,7 @@ def test_rejects_old_future_undated_and_unexpected_host(cfg):
 
 
 def test_empty_recent_is_healthy_and_failure_does_not_leak_payload(cfg, monkeypatch):
+    cfg["sources"]["cn_authors"]["authors"] = cfg["sources"]["cn_authors"]["authors"][:2]
     replies = iter(
         [
             {"status": "empty_recent", "received_items": 5, "valid_items": 5},

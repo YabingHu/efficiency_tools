@@ -286,7 +286,9 @@ def test_chinese_practice_shows_at_most_three_items(cfg):
     path = render(cfg, items, [], datetime(2026, 10, 17), update_latest=False)
     soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
     section = soup.select_one('#section-community_cn')
-    assert "中文开发者实践" in section.get_text()
+    nav_link = soup.select_one('a[href="#section-community_cn"]')
+    assert "中文开发者订阅" in section.get_text()
+    assert "中文开发者订阅" in nav_link.get_text()
     assert len(section.select('article')) == 3
 
 

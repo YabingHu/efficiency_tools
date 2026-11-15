@@ -17,10 +17,8 @@ CI 或需要完全复现当前验证环境时，改用 `requirements.lock`。
 在 `.env` 中配置 `LLM_API_KEY`。模型、来源、板块和新鲜度阈值位于
 `config.yaml`。
 
-Reddit、YouTube、Bluesky 和中文社区扩展来源分别由 `last30days-skill` 与
-`last30days-skill-cn` 提供。本机已安装时会自动发现
-`~/.codex/skills/last30days-en` 和 `~/.codex/skills/last30days-cn`；也可以用
-`LAST30DAYS_EN_SKILL_DIR`、`LAST30DAYS_CN_SKILL_DIR` 指向 skill 目录。
+Reddit、YouTube、Bluesky 由 `last30days-skill` 提供。本机已安装时会自动发现
+`~/.codex/skills/last30days-en`，也可以用 `LAST30DAYS_EN_SKILL_DIR` 指向 skill 目录。
 未安装或单一平台不可用时只跳过对应来源，不会中断整份日报。
 
 X 默认通过开源 `twscrape` 直接采集，不需要付费 API Key。需要自己的 X 登录
@@ -91,30 +89,9 @@ Hacker News 自帖会直接使用帖子正文；高热外链会在通过公网 U
 门槛由 `must_read` 配置。论文摘要按问题、关键方法与结果、适用限制组织，
 保留实验条件并明确归因；GitHub 的性能宣称同样保留项目方口径。
 
-中文板块为「中文开发者实践」，最多展示 3 条，暂无合格内容时隐藏板块及导航入口。
-默认分别搜索 Claude Code 实测、Qwen 本地部署与智能体踩坑；可修改
-`sources.last30days.chinese.queries`（最多 3 条，独立并发查询），或不配置查询数组而
-回退到 `topic`。`practice_only` 默认开启：原始内容需包含实测、对比、部署或排障信号，
-并提供配置、日志、硬件、耗时等具体线索，单纯概念科普和只有标题的内容不会入选。
-有实践选题但素材薄弱的候选会补读公开原文，最多补读 `content_fetch_limit` 个链接
-（默认 4 个、最多 3 个并发，连接/读取超时为 5/10 秒），沿用公网地址和响应大小限制。
-
-中文引擎的 `timeout_seconds` 控制整个搜索进程的全局时限，父进程另留 10 秒退出缓冲；
-旧 `request_timeout_seconds` 不再传给上游的全局超时参数。适配器保留头条 `abstract`、
-知乎 `excerpt`、B站 `description` 和微博 `text`，并按链接去重，避免上游查询内序号
-在多查询之间冲突。`run-status.json` 的 `source_status.last30days_chinese` 提供
-每个平台的原始条数、适配后条数、广告/无关/过期/非实践过滤数量及每次查询状态。
-其中 `accepted` 尚未经过流水线的素材长度、质量与跨天去重，最终展示数量以页面为准；
-`missing_engine`、`failed`、`partial` 与正常无结果的 `empty` 分别记录，不回显上游错误正文。
-`content_fetch` 记录补读尝试与成功数；平台 `errors` 只保留 HTTP 状态码等固定类别，
-补充上游仅在 stderr 报错的情况。`empty` 表示引擎未返回候选，不能证明平台访问正常。
-
-中文引擎通过项目内的 `src/cn_engine_runner.py` 加载兼容层，本地和云端使用相同处理，
-不依赖修改被忽略的外部 skill 文件。头条的 `data: null` 会记录 `empty_data`，
-有效的空列表仍视为正常无结果；微博跳转访客登录页记录 `login_required`。
-`non_json_response`、`invalid_response` 和 `search_results_unavailable` 分别表示
-非 JSON 响应、数据结构异常和备用搜索没有返回结果结构。诊断不包含 Cookie、
-响应正文或原始异常消息。平台拒绝访问不会因兼容处理而自动恢复。
+「中文开发者订阅」默认只使用作者订阅，最多展示 3 条，暂无合格内容时隐藏板块及导航入口。
+原始内容需包含实测、对比、部署或排障信号，并提供配置、日志、硬件、耗时等具体线索。
+中文关键词搜索由 `sources.last30days.chinese.enabled` 控制，当前关闭。
 
 「中文媒体」的量子位来源会在摘要前补读 `.article` 正文，每次最多 6 条、3 个并发，
 连接和读取超时分别为 5/10 秒；失败时保留原有 RSS 摘要。上限由
@@ -172,9 +149,12 @@ Pages 产物。GitHub 的定时任务可能因平台负载延迟几分钟；也�
 
 ## 中文作者订阅
 
-微博“宝玉xp”、知乎“苏剑林”已通过 `sources.cn_authors` 接入中文开发者实践板块，
-只保留最近 48 小时、具有 AI 实践依据的内容，复用日报去重和质量筛选。
-头条候选继续由原搜索通道发现，新入口负责补读正文；不会使用固定旧文章填充。
+「中文开发者订阅」通过 `sources.cn_authors` 订阅微博的宝玉xp、蚁工厂、karminski-牙医，
+以及知乎的苏剑林、刘聪NLP、李博杰。只保留最近 48 小时、具有 AI 实践依据的内容，
+复用日报去重和质量筛选。
+在 `sources.cn_authors.authors` 添加作者，每条填写 `platform`、`id` 和 `name`。
+微博使用 `weibo` 和数字 UID，知乎使用 `zhihu` 和主页 `/people/` 后的标识。
+当前配置校验允许最多 6 个账号。
 安装、登录及云端专用 Secret 配置见[中文来源接入说明](docs/chinese-source-pilot.md)。
 
 ## 免费 X 采集

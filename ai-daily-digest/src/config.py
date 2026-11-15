@@ -264,8 +264,8 @@ def validate_config(cfg: dict) -> None:
     ):
         _positive_int(authors.get(key, default), f"sources.cn_authors.{key}", maximum=maximum)
     accounts = authors.get("authors", [])
-    if not isinstance(accounts, list) or len(accounts) > 4:
-        raise ValueError("sources.cn_authors.authors 最多允许 4 个账号")
+    if not isinstance(accounts, list) or len(accounts) > 6:
+        raise ValueError("sources.cn_authors.authors 最多允许 6 个账号")
     for index, account in enumerate(accounts):
         path = f"sources.cn_authors.authors[{index}]"
         if not isinstance(account, dict) or account.get("platform") not in {"weibo", "zhihu"}:
