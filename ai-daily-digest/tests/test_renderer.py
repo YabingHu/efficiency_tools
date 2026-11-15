@@ -257,6 +257,27 @@ def test_must_reads_reject_missing_fallback_and_empty_summaries(cfg):
     assert must_read_items(cfg, items) == []
 
 
+def test_must_read_shows_a_single_complete_brief_and_keeps_full_article(cfg):
+    story = must_read_candidate("one", "industry", quality=95)
+    story.title = "这是原文的完整标题"
+    story.summary_zh = "这是一条很长的详情摘要" * 15 + "。"
+    story.meta.update(
+        brief_zh="新版 SDK 已可用，使用旧接口的开发者需要更新参数。原文还记录了迁移细节。",
+        grounding_status="verified",
+    )
+    other = must_read_candidate("unverified", "industry", quality=92)
+    other.meta["grounding_status"] = "unverified"
+    path = render(cfg, [story, other], [], datetime(2026, 11, 15), update_latest=False)
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+
+    leads = soup.select(".must-read-title")
+    assert [lead.get_text(strip=True) for lead in leads] == [
+        "新版 SDK 已可用，使用旧接口的开发者需要更新参数。",
+    ]
+    assert soup.select_one("article.card .title").get_text(strip=True) == story.title
+    assert soup.select_one("article.card .summary").get_text(strip=True) == story.summary_zh
+
+
 def test_must_read_thresholds_are_configurable(cfg):
     candidate = must_read_candidate("candidate", quality=70)
     cfg["must_read"]["min_quality_score"] = 75

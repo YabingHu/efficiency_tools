@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -125,6 +126,18 @@ def selected_items(cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
     return selected
 
 
+def _must_read_brief(item: NewsItem) -> str:
+    if changes := item.meta.get("follow_up_changes"):
+        subject = item.meta.get("event_subject") or item.title
+        return f"{subject} 本次进展包括" + "、".join(change["label"] for change in changes) + "。"
+    for content in (item.meta.get("brief_zh", ""), item.summary_zh):
+        text = " ".join(content.split())
+        first = re.split(r"(?<=[。！？!?])\s*|(?<=\.)\s+", text, maxsplit=1)[0]
+        if first and len(first) <= 100 and not first.endswith(("…", "...", "，", "、", ",")):
+            return first if first.endswith(("。", "！", "？", ".", "!", "?")) else first + "。"
+    return ""
+
+
 def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[NewsItem]:
     """先通过质量与素材硬门槛，再从最终展示条目中兼顾板块覆盖。"""
     if limit <= 0:
@@ -139,8 +152,12 @@ def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[Ne
             or not has_sufficient_source(item, requirements.get("min_source_chars", 160))
             or not item.summary_zh.strip()
             or item.meta.get("summary_status") in {"fallback", "raw"}
+            or item.meta.get("grounding_status") in {
+                "source_mismatch", "summary_mismatch", "unverified",
+            }
             or LOW_SIGNAL_PATTERNS[0].search(item.summary_zh)
             or "中文摘要暂未生成" in item.summary_zh
+            or not _must_read_brief(item)
         ):
             continue
         if not safe_http_url(item.url):
@@ -175,11 +192,7 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
         )
     must_reads = must_read_items(cfg, items)
     for item in must_reads:
-        changes = item.meta.get("follow_up_changes")
-        summary = "本次新增 " + "、".join(change["label"] for change in changes) if changes else (
-            " ".join(item.summary_zh.split())
-        )
-        item.meta["brief_summary"] = summary if len(summary) <= 100 else summary[:99] + "…"
+        item.meta["brief_summary"] = _must_read_brief(item)
 
     paper_keys = _paper_section_keys(cfg)
     paper_key_set = set(paper_keys)

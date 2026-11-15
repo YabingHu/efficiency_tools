@@ -6,7 +6,7 @@ import hashlib
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -26,6 +26,9 @@ FULL_MONTH_DATE = re.compile(
     r"November|December)\s+\d{1,2},\s+\d{4}"
 )
 SLASH_DATE = re.compile(r"\d{4}/\d{2}/\d{2}")
+ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+ANTHROPIC_TITLE = 'h2, h3, span[class*="__title"]'
+KIMI_LINK = 'a[href^="/en/blog/"]'
 
 
 def _date(value: str, fmt: str) -> datetime | None:
@@ -47,40 +50,72 @@ def _ancestor_text_with_date(node, pattern: re.Pattern, levels: int = 6) -> str:
     return ""
 
 
+def _card_date(card, *, visible_text: bool = False) -> datetime | None:
+    time_node = card.find("time")
+    if time_node and (value := time_node.get("datetime")):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        except (TypeError, ValueError):
+            pass
+    if time_node is None and not visible_text:
+        return None
+    text = (time_node or card).get_text(" ", strip=True)
+    for pattern, fmt in (
+        (ISO_DATE, "%Y-%m-%d"), (SLASH_DATE, "%Y/%m/%d"),
+        (MONTH_DATE, "%b %d, %Y"), (FULL_MONTH_DATE, "%B %d, %Y"),
+    ):
+        if (match := pattern.search(text)) and (parsed := _date(match[0], fmt)):
+            return parsed
+    return None
+
+
 def _parse_anthropic(soup: BeautifulSoup, base_url: str) -> list[dict]:
-    rows = []
-    for anchor in soup.select('a[href^="/news/"], a[href^="/features/"]'):
-        time_node = anchor.find("time")
-        date_text = time_node.get_text(" ", strip=True) if time_node else ""
-        date_match = MONTH_DATE.search(date_text)
-        title_node = anchor.select_one('span[class*="__title"]')
-        title = title_node.get_text(" ", strip=True) if title_node else ""
-        if not date_match or not title:
+    rows = {}
+    origin = urlsplit(base_url).netloc
+    for anchor in soup.select("a[href]"):
+        title = anchor.select_one(ANTHROPIC_TITLE)
+        link = urljoin(base_url, anchor["href"])
+        parsed = urlsplit(link)
+        if (title is None or link in rows or parsed.netloc != origin
+                or not parsed.path.startswith(("/news/", "/features/", "/claude-"))):
             continue
-        rows.append({
-            "date": _date(date_match.group(0), "%b %d, %Y"),
-            "title": title,
-            "url": urljoin(base_url, anchor.get("href", "")),
-            "text": anchor.get_text(" ", strip=True),
-        })
-    return rows
+        for card in (anchor, *list(anchor.parents)[:3]):
+            # A card can have a category link, but never use another headline's date.
+            headlines = {
+                a["href"] for a in card.select("a[href]") if a.select_one(ANTHROPIC_TITLE)
+            }
+            if headlines - {anchor["href"]}:
+                break
+            if published := _card_date(card):
+                rows[link] = {
+                    "date": published,
+                    "title": title.get_text(" ", strip=True),
+                    "url": link,
+                    "text": card.get_text(" ", strip=True),
+                }
+                break
+    return list(rows.values())
 
 
 def _parse_kimi(soup: BeautifulSoup, base_url: str) -> list[dict]:
-    rows = []
-    for anchor in soup.select('a[href^="/en/blog/"]'):
-        title = str(anchor.get("aria-label") or anchor.get_text(" ", strip=True)).strip()
-        context = _ancestor_text_with_date(anchor, SLASH_DATE)
-        date_match = SLASH_DATE.search(context)
-        if not title or not date_match:
+    rows = {}
+    for anchor in soup.select(KIMI_LINK):
+        link = urljoin(base_url, anchor["href"])
+        card = anchor.parent
+        # Index navigation has the same links but no per-article date.
+        if link in rows or len(card.select(KIMI_LINK)) != 1:
             continue
-        rows.append({
-            "date": _date(date_match.group(0), "%Y/%m/%d"),
-            "title": title,
-            "url": urljoin(base_url, anchor.get("href", "")),
-            "text": context,
-        })
-    return rows
+        heading = card.select_one("h2, h3, h4")
+        title = anchor.get("aria-label") or (heading or anchor).get_text(" ", strip=True)
+        if title and (published := _card_date(card, visible_text=True)):
+            rows[link] = {
+                "date": published,
+                "title": title.strip(),
+                "url": link,
+                "text": card.get_text(" ", strip=True),
+            }
+    return list(rows.values())
 
 
 def _parse_qwen(soup: BeautifulSoup, base_url: str) -> list[dict]:

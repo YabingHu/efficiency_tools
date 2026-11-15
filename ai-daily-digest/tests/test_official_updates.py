@@ -39,6 +39,50 @@ def test_parses_kimi_research_cards_with_overlay_link():
     assert rows[0]["date"].date().isoformat() == "2026-07-17"
 
 
+def test_anthropic_uses_date_from_same_article_or_list_row():
+    html = """
+    <article>
+      <header><a href="/news/announcements">Announcements</a><time>Nov 9, 2026</time></header>
+      <a href="/claude-fable-and-mythos-5-2"><h2>Introducing Claude Fable 5.2</h2></a>
+    </article>
+    <section>
+      <div>
+        <div><a href="/news/roadshow-launch"><h3>Anthropic launches roadshow</h3></a></div>
+        <time datetime="2026-11-10">Nov 10, 2026</time>
+      </div>
+      <div><a href="/news/undated"><h3>Unrelated undated story</h3></a></div>
+    </section>
+    """
+    rows = official_updates._parse_anthropic(
+        BeautifulSoup(html, "html.parser"), "https://www.anthropic.com/news",
+    )
+    assert [(row["title"], row["date"].date().isoformat()) for row in rows] == [
+        ("Introducing Claude Fable 5.2", "2026-11-09"),
+        ("Anthropic launches roadshow", "2026-11-10"),
+    ]
+
+
+def test_kimi_uses_iso_dates_and_ignores_duplicate_navigation_links():
+    html = """
+    <nav>
+      <a href="/en/blog/kimi-k3-1-pro">Kimi K3.1 Pro</a>
+      <a href="/en/blog/kimi-k3">Kimi K3</a>
+    </nav>
+    <div class="menu-card">
+      <a href="/en/blog/kimi-k3-1-pro"></a><h4>Kimi K3.1 Pro</h4><p>2026-10-24</p>
+    </div>
+    <div class="menu-card">
+      <a href="/en/blog/kimi-k3"></a><h4>Kimi K3</h4><p>2026-07-16</p>
+    </div>
+    """
+    rows = official_updates._parse_kimi(
+        BeautifulSoup(html, "html.parser"), "https://www.kimi.com/en/blog/",
+    )
+    assert [(row["title"], row["date"].date().isoformat()) for row in rows] == [
+        ("Kimi K3.1 Pro", "2026-10-24"), ("Kimi K3", "2026-07-16"),
+    ]
+
+
 def test_parses_deepseek_model_release():
     html = """
     <div>

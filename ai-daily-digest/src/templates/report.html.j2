@@ -73,7 +73,6 @@
   }
   .must-read-title { color: var(--text); font-size: 16px; font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
   .must-read-title:hover { color: var(--primary); text-decoration: underline; }
-  .must-read-summary { margin-top: 5px; color: var(--text-soft); font-size: 13px; overflow-wrap: anywhere; }
   .must-read-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px; font-size: 12px; color: var(--text-light); }
   .must-read-meta a { color: var(--primary); text-decoration: none; }
   .must-read-meta a:hover { text-decoration: underline; }
@@ -271,10 +270,7 @@
     <ol class="must-read-list">
       {% for item in must_reads %}
       <li class="must-read">
-        <a class="must-read-title" href="{{ item.meta.reading_url }}"{% if item.meta.link_status != 'rss_only' %} target="_blank" rel="noopener"{% endif %}>{{ item.title }}</a>
-        {% if item.meta.brief_summary and item.meta.brief_summary != item.title %}
-        <p class="must-read-summary">{{ item.meta.brief_summary }}</p>
-        {% endif %}
+        <a class="must-read-title" href="{{ item.meta.reading_url }}"{% if item.meta.link_status != 'rss_only' %} target="_blank" rel="noopener"{% endif %}>{{ item.meta.brief_summary }}</a>
         <div class="must-read-meta">
           <span>{{ item.source }}</span>
           {% if item.meta.follow_up_date %}<span>后续</span>{% endif %}

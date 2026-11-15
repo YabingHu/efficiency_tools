@@ -94,6 +94,9 @@ def annotate_event(item: NewsItem) -> None:
     if not (milestones or explicit_release):
         return
     item.meta["event_key"] = entity
+    subject = TOOL.search(item.title) or MODEL.search(item.title)
+    if subject:
+        item.meta["event_subject"] = subject[0]
     item.meta["event_milestones"] = milestones
 
 

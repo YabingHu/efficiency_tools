@@ -95,6 +95,7 @@ def _candidate_rows(items: list[NewsItem], selected: list[NewsItem], must_reads:
             "quality_reasons": meta.get("quality_reasons", []),
             "importance": item.importance or None,
             "summary_status": meta.get("summary_status"),
+            "grounding_status": meta.get("grounding_status"),
             "follow_up_date": meta.get("follow_up_date"),
             "outcome": meta.get("selection_stage", "published" if id(item) in shown else "omitted"),
             "published": id(item) in shown,

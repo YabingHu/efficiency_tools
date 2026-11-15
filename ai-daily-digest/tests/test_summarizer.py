@@ -87,6 +87,58 @@ def test_failed_batch_is_split_until_individual_items_succeed(tmp_path):
     assert batch_sizes == [4, 2, 1, 1, 2, 1, 1]
 
 
+@pytest.mark.parametrize("recover", [True, False])
+def test_deepnote_summary_rejects_unrelated_optimer_output(tmp_path, recover):
+    summarizer = _make_summarizer(tmp_path)
+    excerpt = "Deepnote 测试智能体何时主动介入工作讨论。"
+    story = NewsItem(
+        "deepnote", "media", "Deepnote发布 Agent Initiative Benchmark",
+        "https://example.com/deepnote", "新智元", text=excerpt,
+    )
+    calls = []
+
+    def fake_chat(_prompt, payload):
+        calls.append(payload)
+        if len(calls) == 2 and recover:
+            return json.dumps([{
+                "id": story.id, "summary": "Deepnote 评估智能体的介入时机。",
+                "brief": "Deepnote 的新基准用工作讨论测量智能体的主动性。",
+                "evidence": excerpt,
+            }])
+        # A correct ID and even a valid quote cannot excuse a different subject.
+        return json.dumps([{
+            "id": story.id, "summary": "日本 NICT 团队用 OptiMer 优化预训练数据配比。",
+            "evidence": excerpt,
+        }])
+
+    summarizer._chat = fake_chat
+    summarizer.summarize_items([story])
+
+    assert len(calls) == 2
+    assert "OptiMer" not in story.summary_zh
+    if recover:
+        assert story.meta["grounding_status"] == "verified"
+        assert story.meta["brief_zh"].startswith("Deepnote")
+    else:
+        assert story.meta["summary_status"] == "fallback"
+        assert story.meta["grounding_status"] == "summary_mismatch"
+
+
+def test_suspicious_source_body_is_not_sent_for_summary_or_used_as_fallback(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    story = NewsItem(
+        "deepnote", "media", "Deepnote发布 Agent Initiative Benchmark",
+        "https://example.com/deepnote", "新智元",
+        text="日本 NICT 团队用 OptiMer 优化预训练数据配比，并提出一种新的数据混合方法。" * 2,
+    )
+    summarizer._chat = lambda *_: pytest.fail("错配素材不应送去生成摘要")
+
+    summarizer.summarize_items([story])
+
+    assert story.meta["grounding_status"] == "source_mismatch"
+    assert "OptiMer" not in story.summary_zh
+
+
 def test_summary_cache_is_reused_across_runs(tmp_path):
     item_args = (
         "same-id", "industry", "same title", "https://example.com/same", "source",
