@@ -138,6 +138,31 @@ def _must_read_brief(item: NewsItem) -> str:
     return ""
 
 
+def _must_read_source(item: NewsItem) -> tuple[str, str] | None:
+    url = safe_http_url(item.url)
+    if not url or item.meta.get("link_status") == "rss_only":
+        return None
+    if paper := re.fullmatch(r"arxiv:(\d{4}\.\d{4,5})", item.id):
+        return "论文原文", f"https://arxiv.org/abs/{paper[1]}"
+    changes = item.meta.get("follow_up_changes", [])
+    if any(not change.get("first_party") for change in changes):
+        return None
+    if item.meta.get("first_party"):
+        for change in changes:
+            if change_url := safe_http_url(change.get("url", "")):
+                return "进展来源", change_url
+        return "官方来源", url
+    if item.section == "github" and (
+        item.meta.get("readme_available") or item.meta.get("release_available")
+    ):
+        return "项目原文", url
+    if item.meta.get("collection_method") == "author_feed" or (
+        item.id.startswith("hn:") and url == item.meta.get("hn_url")
+    ):
+        return "作者原帖", url
+    return None
+
+
 def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[NewsItem]:
     """先通过质量与素材硬门槛，再从最终展示条目中兼顾板块覆盖。"""
     if limit <= 0:
@@ -145,27 +170,27 @@ def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[Ne
     requirements = cfg.get("must_read", {})
     paper_keys = set(_paper_section_keys(cfg))
     ranked = sorted(selected_items(cfg, items), key=quality_sort_key, reverse=True)
-    candidates, seen = [], set()
+    candidates, seen, seen_events = [], set(), set()
     for item in ranked:
         if (
             quality_sort_key(item)[0] < requirements.get("min_quality_score", 65)
             or not has_sufficient_source(item, requirements.get("min_source_chars", 160))
             or not item.summary_zh.strip()
             or item.meta.get("summary_status") in {"fallback", "raw"}
-            or item.meta.get("grounding_status") in {
-                "source_mismatch", "summary_mismatch", "unverified",
-            }
+            or item.meta.get("grounding_status") != "verified"
             or LOW_SIGNAL_PATTERNS[0].search(item.summary_zh)
             or "中文摘要暂未生成" in item.summary_zh
             or not _must_read_brief(item)
+            or not _must_read_source(item)
         ):
             continue
-        if not safe_http_url(item.url):
-            continue
         url = canonical_url(item.url)
-        if item.id in seen or url in seen:
+        event = item.meta.get("event_key")
+        if item.id in seen or url in seen or (event and event in seen_events):
             continue
         seen.update((item.id, url))
+        if event:
+            seen_events.add(event)
         candidates.append(item)
     selected, groups = [], set()
     for item in candidates:
@@ -180,7 +205,7 @@ def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[Ne
 
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
            report_date: datetime, *, today_threads: list[dict] | None = None,
-           update_latest: bool = True) -> Path:
+           update_latest: bool = True, section_notes: dict[str, str] | None = None) -> Path:
     env = _environment()
     template = env.get_template("report.html.j2")
     # 保留旧调用参数兼容历史工具，但不再渲染无文章绑定的要点和主线。
@@ -190,41 +215,54 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
             "#rss-full-" + item.meta["article_id"]
             if item.meta.get("link_status") == "rss_only" else item.url
         )
-    must_reads = must_read_items(cfg, items)
-    for item in must_reads:
-        item.meta["brief_summary"] = _must_read_brief(item)
+    must_reads = []
+    for item in must_read_items(cfg, items):
+        title = " ".join((item.meta.get("headline_zh") or item.title).split())
+        source_label, source_url = _must_read_source(item)
+        must_reads.append({
+            "item": item,
+            "title": title if len(title) <= 56 else title[:55].rstrip() + "…",
+            "brief": _must_read_brief(item),
+            "source_label": source_label,
+            "source_url": source_url,
+        })
 
     paper_keys = _paper_section_keys(cfg)
     paper_key_set = set(paper_keys)
+    rendered = {
+        key: _render_section(cfg, key, sec_cfg, items)
+        for key, sec_cfg in cfg["sections"].items() if sec_cfg.get("enabled", True)
+    }
     sections = []
-    for key, sec_cfg in cfg["sections"].items():
-        if not sec_cfg.get("enabled", True):
-            continue
+    empty_sections = []
+    section_notes = section_notes or {}
+    for key, section in rendered.items():
+        if not section["entries"]:
+            empty_sections.append((section["title"], section_notes.get(key, "本期无入选内容")))
         if key in paper_key_set:
             if key == paper_keys[0]:
                 topics = [
-                    _render_section(cfg, paper_key, cfg["sections"][paper_key], items)
-                    for paper_key in paper_keys
+                    rendered[paper_key] for paper_key in paper_keys
+                    if rendered[paper_key]["entries"]
                 ]
-                topics = [topic for topic in topics if topic["entries"]]
-                sections.append({
-                    "key": "papers-group",
-                    "title": "📚 论文动态",
-                    "subtitle": "精选论文、arXiv 新稿与专题论文",
-                    "entries": [entry for topic in topics for entry in topic["entries"]],
-                    "topics": topics,
-                })
+                if topics:
+                    sections.append({
+                        "key": "papers-group",
+                        "title": "📚 论文动态",
+                        "subtitle": "精选论文、arXiv 新稿与专题论文",
+                        "entries": [entry for topic in topics for entry in topic["entries"]],
+                        "topics": topics,
+                    })
             continue
-        section = _render_section(cfg, key, sec_cfg, items)
-        if key == "community_cn" and not section["entries"]:
-            continue
-        sections.append(section)
+        if section["entries"]:
+            sections.append(section)
 
     html = template.render(
         date_str=report_date.strftime("%Y-%m-%d"),
         weekday=WEEKDAYS[report_date.weekday()],
         must_reads=must_reads,
         sections=sections,
+        empty_sections=empty_sections,
         generated_at=datetime.now(
             ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))
         ).strftime("%Y-%m-%d %H:%M %Z"),

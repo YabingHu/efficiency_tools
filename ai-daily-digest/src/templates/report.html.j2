@@ -73,6 +73,7 @@
   }
   .must-read-title { color: var(--text); font-size: 16px; font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
   .must-read-title:hover { color: var(--primary); text-decoration: underline; }
+  .must-read-brief { margin-top: 5px; font-size: 14px; line-height: 1.65; color: var(--text-soft); }
   .must-read-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px; font-size: 12px; color: var(--text-light); }
   .must-read-meta a { color: var(--primary); text-decoration: none; }
   .must-read-meta a:hover { text-decoration: underline; }
@@ -170,10 +171,9 @@
   .section-toggle:focus-visible, .paper-topic-tab:focus-visible, a:focus-visible {
     outline: 3px solid rgba(91,91,214,.28); outline-offset: 3px;
   }
-  .empty {
-    color: var(--text-light); font-size: 14px; padding: 24px;
-    background: rgba(255,255,255,.55); border: 1px dashed #dfe2eb; border-radius: 16px;
-  }
+  .coverage { margin-bottom: 16px; color: var(--text-soft); }
+  .coverage summary { cursor: pointer; color: var(--primary); }
+  .coverage ul { list-style: none; padding: 6px 0 0; line-height: 1.8; }
   footer.page {
     text-align: center; color: var(--text-light); font-size: 12.5px;
     margin-top: 20px; border-top: 1px solid var(--border); padding-top: 24px;
@@ -268,18 +268,14 @@
   <div class="overview" aria-labelledby="must-read-heading">
     <h2 id="must-read-heading">⚡ 今日必读 · {{ must_reads|length }} 条</h2>
     <ol class="must-read-list">
-      {% for item in must_reads %}
+      {% for lead in must_reads %}
+      {% set item = lead.item %}
       <li class="must-read">
-        <a class="must-read-title" href="{{ item.meta.reading_url }}"{% if item.meta.link_status != 'rss_only' %} target="_blank" rel="noopener"{% endif %}>{{ item.meta.brief_summary }}</a>
+        <a class="must-read-title" href="#{{ item.meta.article_id }}">{{ lead.title }}</a>
+        <p class="must-read-brief">{{ lead.brief }}</p>
         <div class="must-read-meta">
-          <span>{{ item.source }}</span>
           {% if item.meta.follow_up_date %}<span>后续</span>{% endif %}
-          <a href="#{{ item.meta.article_id }}">查看摘要 ↓</a>
-          {% if item.meta.link_status == 'rss_only' %}
-          <a href="{{ item.meta.reading_url }}">展开全文 ↓</a>
-          {% else %}
-          <a href="{{ item.url }}" target="_blank" rel="noopener">阅读原文 ↗</a>
-          {% endif %}
+          <a href="{{ lead.source_url }}" target="_blank" rel="noopener">{{ lead.source_label }} ↗</a>
         </div>
       </li>
       {% endfor %}
@@ -287,11 +283,13 @@
   </div>
   {% endif %}
 
+  {% if sections %}
   <nav class="section-nav" aria-label="日报板块">
     {% for section in sections %}
     <a href="#section-{{ section.key }}">{{ section.title }} <span class="count">{{ section.entries|length }}</span></a>
     {% endfor %}
   </nav>
+  {% endif %}
 
   {% for section in sections %}
   <section id="section-{{ section.key }}" class="section-{{ section.key }}">
@@ -320,7 +318,6 @@
         <span class="sub">{{ topic.subtitle }}</span>
         <span class="section-total">{{ topic.entries|length }} 条精选</span>
       </div>
-      {% if topic.entries %}
       <div class="entries" id="entries-{{ topic.key }}">
         {% for item in topic.entries %}
         {{ entry_card(item, loop.index > topic.initial_visible) }}
@@ -336,13 +333,9 @@
         </button>
       </div>
       {% endif %}
-      {% else %}
-        <div class="empty">今日该专题暂无内容（来源不可用或无更新）</div>
-      {% endif %}
     </div>
     {% endfor %}
     {% else %}
-    {% if section.entries %}
     <div class="entries" id="entries-{{ section.key }}">
       {% for item in section.entries %}
       {{ entry_card(item, loop.index > section.initial_visible) }}
@@ -358,14 +351,19 @@
       </button>
     </div>
     {% endif %}
-    {% else %}
-      <div class="empty">{% if section.key in ['community', 'community_cn'] %}今日暂无符合筛选条件的 AI 社区内容{% else %}今日该板块暂无内容（来源不可用或无更新）{% endif %}</div>
-    {% endif %}
     {% endif %}
   </section>
   {% endfor %}
 
   <footer class="page">
+    {% if empty_sections %}
+    <details class="coverage">
+      <summary>本期未刊出内容的板块（{{ empty_sections|length }}）</summary>
+      <ul>
+        {% for title, note in empty_sections %}<li>{{ title }} · {{ note }}</li>{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
     由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>
     数据来源：HuggingFace / arXiv / GitHub / RSS / Hacker News / Lobsters / Stack Exchange / Reddit / X / 中文公开平台
   </footer>

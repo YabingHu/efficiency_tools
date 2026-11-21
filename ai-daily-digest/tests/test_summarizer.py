@@ -140,6 +140,18 @@ def test_suspicious_source_body_is_not_sent_for_summary_or_used_as_fallback(tmp_
     assert "OptiMer" not in story.summary_zh
 
 
+def test_quote_from_title_alone_keeps_summary_out_of_must_read(tmp_path):
+    summarizer = _make_summarizer(tmp_path)
+    story = NewsItem("official", "industry", "OpenAI announces a new safety report",
+                     "https://example.com/report", "OpenAI", text="正文只说明报告的发布时间。")
+    summarizer._chat = lambda *_: json.dumps([{
+        "id": story.id, "summary": "OpenAI 发布安全报告。", "evidence": story.title,
+    }])
+    summarizer.summarize_items([story])
+    assert story.meta["summary_status"] == "generated"
+    assert story.meta["grounding_status"] == "unverified"
+
+
 def test_thinking_option_is_passed_as_provider_extension(cfg, monkeypatch):
     requests = []
 

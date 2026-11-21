@@ -9,7 +9,7 @@ MODEL = re.compile(
     rf"(?<![a-z0-9]){MODEL_FAMILIES}"
     r"[ -]?(?:(?:opus|sonnet|haiku|flash|pro|turbo|air)[ -]+)?"
     r"(?:v|r|k)?\d+(?:\.\d+)*(?:[- ](?:opus|sonnet|haiku|flash(?:[- ]lite)?|"
-    r"pro|max|turbo|air|mini|nano|plus|thinking|instruct|coder|preview|\d+b))?"
+    r"pro|max|turbo|air|mini|nano|plus|thinking|instruct|coder|preview|astra|sol|\d+b))?"
     r"(?![a-z0-9]|\.\d)",
     re.I,
 )
@@ -18,9 +18,15 @@ TOOL = re.compile(
     r"[ :–-]+v?\d+(?:\.\d+)+(?:[-.](?:rc|beta|alpha|preview)\d*)?(?![a-z0-9]|\.\d)",
     re.I,
 )
+GPT_VARIANT_PAIR = re.compile(
+    r"(?<![a-z0-9])(?P<version>gpt[ -]?\d+(?:\.\d+)*)[ -]+(?P<first>astra|sol)"
+    r"\s*(?:and\b|和|与|及|[、/＆&])\s*(?:(?P=version)[ -]+)?(?P<second>astra|sol)(?![a-z0-9])",
+    re.I,
+)
 RELEASE = re.compile(
     r"\b(?:releas(?:e[sd]?|ing)|launch(?:es|ed)?|introduc(?:e[sd]?|ing)|"
-    r"announc(?:e[sd]?|ing)|ship(?:s|ped)?)\b|发布|推出|上线", re.I,
+    r"announc(?:e[sd]?|ing)|ship(?:s|ped)?)\b|\b(?:is|are) now available\b"
+    r"|\bstarting today\b.{0,120}\b(?:is|are) available\b|发布|推出|上线|双发", re.I,
 )
 MILESTONES = {
     "weights": (
@@ -56,7 +62,11 @@ OPEN_WEIGHT = re.compile(r"\bopen[- ]weights?\b", re.I)
 
 def _entities(text: str) -> set[str]:
     entities = set()
-    for match in (*TOOL.findall(text), *MODEL.findall(text)):
+    variants = [
+        f"{pair['version']} {pair[side]}"
+        for pair in GPT_VARIANT_PAIR.finditer(text) for side in ("first", "second")
+    ]
+    for match in (*TOOL.findall(text), *MODEL.findall(text), *variants):
         match = re.sub(rf"^({MODEL_FAMILIES})(?=[vrk]?\d)", r"\1 ", match.lower())
         words = re.sub(r"[ :–-]+", " ", match.lower()).split()
         words = [word for word in words if word != "cli"]
@@ -73,17 +83,21 @@ def annotate_event(item: NewsItem) -> None:
     if "event_key" in item.meta:
         return
     entities = _entities(item.title)
-    if len(entities) != 1:
+    pair = GPT_VARIANT_PAIR.search(item.title)
+    joint_release = pair and pair["first"].casefold() != pair["second"].casefold()
+    if not (len(entities) == 1 or (len(entities) == 2 and joint_release)):
         return
-    entity = next(iter(entities))
-    source = {"source": item.source, "url": item.url}
+    source = {
+        "source": item.source, "url": item.url,
+        "first_party": bool(item.meta.get("first_party")),
+    }
     milestones = {}
     passages = [item.title]
     if item.meta.get("first_party"):
         passages.extend(re.split(r"(?<=[.!?。！？])\s+|[。！？\n]", item.text))
     for passage in passages:
         mentions = _entities(passage)
-        if (mentions and mentions != entities) or UNCERTAIN.search(passage):
+        if (mentions and not mentions <= entities) or UNCERTAIN.search(passage):
             continue
         for key, (_, pattern) in MILESTONES.items():
             if pattern.search(passage):
@@ -93,8 +107,8 @@ def annotate_event(item: NewsItem) -> None:
         milestones["weights"] = source
     if not (milestones or explicit_release):
         return
-    item.meta["event_key"] = entity
-    subject = TOOL.search(item.title) or MODEL.search(item.title)
+    item.meta["event_key"] = " + ".join(sorted(entities))
+    subject = pair or TOOL.search(item.title) or MODEL.search(item.title)
     if subject:
         item.meta["event_subject"] = subject[0]
     item.meta["event_milestones"] = milestones

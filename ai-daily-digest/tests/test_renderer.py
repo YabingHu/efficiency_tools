@@ -45,7 +45,7 @@ def test_rss_only_story_opens_escaped_feed_text_instead_of_search_page(cfg):
         "机器之心", text="AI 实验配置与复现步骤。" * 30,
         summary_zh="这份实验记录提供了具体配置与实验结果。", importance=5,
         meta={"link_status": "rss_only", "rss_full_text": "第一段\n\n<script>untrusted</script>",
-              "quality_score": 90},
+              "quality_score": 90, "grounding_status": "verified"},
     )
     path = render(cfg, [news], [], datetime(2026, 10, 25, tzinfo=ZoneInfo("Asia/Shanghai")),
                   update_latest=False)
@@ -58,7 +58,7 @@ def test_rss_only_story_opens_escaped_feed_text_instead_of_search_page(cfg):
     assert "&lt;script&gt;untrusted&lt;/script&gt;" in html
     assert "<script>untrusted</script>" not in html
     assert not soup.select('a[href*="weixin.sogou.com"]')
-    assert soup.select_one(".must-read-title")["href"] == "#" + detail["id"]
+    assert not soup.select(".must-read-title")
     assert "target.open = true" in html
 
 
@@ -179,7 +179,8 @@ def test_render_replaces_legacy_overviews_with_linked_must_reads(cfg):
         "https://example.com/thread", "OpenAI",
         text="Safety evaluation methodology and results. " * 8,
         summary_zh="安全报告摘要",
-        importance=4, meta={"quality_score": 88, "quality_reasons": ["AI 相关性强"]},
+        importance=4, meta={"quality_score": 88, "quality_reasons": ["AI 相关性强"],
+                            "first_party": True, "grounding_status": "verified"},
     )
 
     path = render(
@@ -200,8 +201,8 @@ def test_render_replaces_legacy_overviews_with_linked_must_reads(cfg):
     assert "安全治理：OpenAI releases" not in html
     soup = BeautifulSoup(html, "html.parser")
     lead = soup.select_one('.must-read')
-    assert lead.select_one('.must-read-title')["href"] == news.url
-    target = lead.select_one('a[href^="#"]')["href"][1:]
+    assert lead.select_one('.must-read-meta a')["href"] == news.url
+    target = lead.select_one('.must-read-title')["href"][1:]
     assert soup.find(id=target).select_one('.title a')["href"] == news.url
     assert "质量 88" in html
     assert "AI 相关性强" in html
@@ -236,7 +237,8 @@ def must_read_candidate(item_id, section="papers", *, url=None, quality=80):
         item_id, section, f"LLM release {item_id}", url or f"https://example.com/{item_id}",
         "source", text="A detailed AI evaluation with specific results and limitations. " * 6,
         summary_zh="这项研究提供了具体的实验结果，并说明适用范围。", importance=4,
-        meta={"quality_score": quality, "summary_status": "generated"},
+        meta={"quality_score": quality, "summary_status": "generated",
+              "first_party": True, "grounding_status": "verified"},
     )
 
 
@@ -262,6 +264,7 @@ def test_must_read_shows_a_single_complete_brief_and_keeps_full_article(cfg):
     story.title = "这是原文的完整标题"
     story.summary_zh = "这是一条很长的详情摘要" * 15 + "。"
     story.meta.update(
+        headline_zh="新版 SDK 开放",
         brief_zh="新版 SDK 已可用，使用旧接口的开发者需要更新参数。原文还记录了迁移细节。",
         grounding_status="verified",
     )
@@ -270,12 +273,42 @@ def test_must_read_shows_a_single_complete_brief_and_keeps_full_article(cfg):
     path = render(cfg, [story, other], [], datetime(2026, 11, 15), update_latest=False)
     soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
 
-    leads = soup.select(".must-read-title")
+    assert soup.select_one(".must-read-title").get_text(strip=True) == "新版 SDK 开放"
+    leads = soup.select(".must-read-brief")
     assert [lead.get_text(strip=True) for lead in leads] == [
         "新版 SDK 已可用，使用旧接口的开发者需要更新参数。",
     ]
     assert soup.select_one("article.card .title").get_text(strip=True) == story.title
     assert soup.select_one("article.card .summary").get_text(strip=True) == story.summary_zh
+
+
+def test_must_read_on_research_links_to_paper_and_skips_secondary_only_story(cfg):
+    paper = must_read_candidate("arxiv:2611.18114", url="https://huggingface.co/papers/2611.18114")
+    paper.meta["first_party"] = False
+    media = must_read_candidate("coverage", "media", quality=99)
+    media.meta["first_party"] = False
+    path = render(cfg, [paper, media], [], datetime(2026, 11, 21), update_latest=False)
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+    assert len(soup.select(".must-read")) == 1
+    assert soup.select_one(".must-read-meta a")["href"] == "https://arxiv.org/abs/2611.18114"
+    assert len(soup.select("article.card")) == 2
+
+
+def test_must_read_reserves_one_slot_per_event_across_sections(cfg):
+    lead = must_read_candidate("release", "industry", quality=96)
+    official_post = must_read_candidate("release-post", "community", quality=94)
+    project = must_read_candidate("separate", "community")
+    for candidate in (lead, official_post):
+        candidate.meta["event_key"] = "gpt 6.2 astra + gpt 6.2 sol"
+    assert must_read_items(cfg, [lead, official_post, project]) == [lead, project]
+
+
+def test_empty_sections_move_from_navigation_to_coverage(cfg):
+    path = render(cfg, [], [], datetime(2026, 11, 21), update_latest=False,
+                  section_notes={"github": "采集到 11 条，选稿后无入选内容"})
+    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
+    assert not soup.select('nav.section-nav, #section-github')
+    assert "采集到 11 条，选稿后无入选内容" in soup.select_one("footer .coverage").get_text()
 
 
 def test_must_read_thresholds_are_configurable(cfg):

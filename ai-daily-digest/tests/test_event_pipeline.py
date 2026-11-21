@@ -40,6 +40,21 @@ def test_release_group_retains_official_source_and_distinct_versions(cfg):
     }
 
 
+def test_joint_gpt_release_merges_media_and_official_post(cfg):
+    report = article(
+        "GPT-6.2 Astra和Sol王炸双发！3D又危了", "https://news.example.com/a", official=False,
+    )
+    official = article(
+        "@OpenAI：Starting today, GPT-6.2 Astra and Sol are available in ChatGPT Work and Codex.",
+        "https://x.com/OpenAI/status/2122750135608528984",
+    )
+    official.section = "community"
+    separate = article("GPT-6.2 Sol API is now available", "https://example.com/sol-api")
+    assert main.collapse_cross_source(cfg, [report, official, separate]) == [official, separate]
+    assert official.meta["related_sources"] == [{"source": report.source, "url": report.url}]
+    assert official.meta["event_key"] == "gpt 6.2 astra + gpt 6.2 sol"
+
+
 def test_seven_day_release_replay_keeps_material_followups(tmp_path):
     ledger_path = tmp_path / "seen.json"
     start = date(2026, 11, 1)

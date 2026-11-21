@@ -88,8 +88,10 @@ def _matches_keyword(text: str, keyword: str) -> bool:
 
 
 def collect(cfg: dict, today) -> list[NewsItem]:
+    statuses = cfg.setdefault("_collector_status", {})
     current_date = datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))).date()
     if today != current_date:
+        statuses["github"] = {"status": "historical_unsupported"}
         log.warning("GitHub Trending 不支持历史回放，跳过报告日期 %s", today)
         return []
 
@@ -101,6 +103,7 @@ def collect(cfg: dict, today) -> list[NewsItem]:
         resp = http_get(URL, cfg=cfg, headers=HEADERS)
         resp.raise_for_status()
     except Exception as e:
+        statuses["github"] = {"status": "failed"}
         log.warning("GitHub Trending 请求失败: %s", e)
         return []
 
@@ -150,5 +153,6 @@ def collect(cfg: dict, today) -> list[NewsItem]:
         workers = min(src_cfg.get("content_workers", 3), len(candidates))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             list(pool.map(lambda item: _enrich_item(item, cfg), candidates))
+    statuses["github"] = {"status": "ok" if items else "empty", "count": len(items)}
     log.info("GitHub Trending 命中 %d 个（关键词匹配 %d）", len(items), len(matched))
     return items

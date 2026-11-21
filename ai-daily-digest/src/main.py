@@ -8,6 +8,7 @@
 import argparse
 import logging
 import sys
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
@@ -127,6 +128,46 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
         "empty_collectors": empty,
     }
     return [item for name in selected for item in results.get(name, [])], diagnostics
+
+
+def section_collection_notes(cfg: dict, items: list, diagnostics: dict) -> dict[str, str]:
+    """Summarize known collection outcomes for sections with no published entries."""
+    counts = Counter(item.section for item in items)
+    failures = set(diagnostics.get("failed_collectors", []))
+    status = diagnostics.get("source_status", {})
+    attempted = diagnostics.get("collector_counts", {})
+    topics = paper_topic_sections(cfg)
+    notes = {}
+    for section in cfg["sections"]:
+        if counts[section]:
+            notes[section] = f"采集到 {counts[section]} 条，选稿后无入选内容"
+            continue
+        sources = [
+            name for name, (_, sections) in COLLECTORS.items()
+            if section in sections and name in attempted
+        ]
+        if section in topics and "arxiv" in attempted:
+            sources.append("arxiv")
+        if not sources:
+            continue
+        states = [status.get(name, {}).get("status") for name in sources]
+        if "rss" in sources:
+            feeds = status.get("rss", {}).get("feeds", {})
+            states.extend(
+                feeds.get(feed["name"], {}).get("status")
+                for feed in cfg.get("sources", {}).get("rss", {}).get("feeds", [])
+                if feed.get("section", "industry") == section
+            )
+        if "official_updates" in sources:
+            sites = status.get("official_updates", {}).get("sites", {})
+            states.extend(site.get("status") for site in sites.values())
+        if any(name in failures for name in sources) or set(states) & {"failed", "partial"}:
+            notes[section] = "有来源采集异常，本期未取得候选"
+        elif all(state == "historical_unsupported" for state in states):
+            notes[section] = "来源不支持历史日期回补"
+        else:
+            notes[section] = "本期采集未取得候选"
+    return notes
 
 
 def deduplicate(items: list, enabled_sections: set[str], *, match_events: bool = False) -> list:
@@ -342,6 +383,7 @@ def main():
     out_path = render(
         cfg, deduped, [], report_date,
         update_latest=is_current,
+        section_notes=section_collection_notes(cfg, items, diagnostics),
     )
     published = selected_items(cfg, deduped)
     must_reads = must_read_items(cfg, deduped)

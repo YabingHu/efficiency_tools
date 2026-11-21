@@ -145,6 +145,17 @@ def test_collect_all_reports_empty_and_failed_collectors(monkeypatch, cfg):
     assert diagnostics["empty_collectors"] == ["arxiv", "github"]
 
 
+def test_coverage_notes_distinguish_selection_from_collection(cfg):
+    github = NewsItem("repo", "github", "AI repo", "https://example.com/repo", "GitHub")
+    notes = main.section_collection_notes(cfg, [github], {
+        "collector_counts": {"github": 1, "hf_papers": 0, "hackernews": 0},
+        "source_status": {"hf_papers": {"status": "failed"}},
+    })
+    assert notes["github"] == "采集到 1 条，选稿后无入选内容"
+    assert notes["papers"] == "有来源采集异常，本期未取得候选"
+    assert notes["community"] == "本期采集未取得候选"
+
+
 def test_no_llm_fallback_shows_source_text():
     news = item("raw")
     news.text = "raw source text"

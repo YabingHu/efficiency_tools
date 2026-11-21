@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 # 总 prompt 版本独立于单条摘要缓存版本，避免只改「今日要点」时误伤旧摘要。
 PROMPT_VERSION = 3
-SUMMARY_CACHE_PROMPT_VERSION = 4
+SUMMARY_CACHE_PROMPT_VERSION = 5
 COMMUNITY_SUMMARY_VERSION = 1
 CHINESE_PRACTICE_SUMMARY_VERSION = 1
 _GENERIC_COMMENTS = {
@@ -52,6 +52,8 @@ BATCH_PROMPT = """你是一名 AI 领域资讯编辑，为《大模型每日早�
 1. summary: 2~3 句中文摘要，说清楚“是什么、有什么亮点/意义”。
    论文类条目（papers/arxiv/eval/agent）依次交代解决的问题、关键方法与结果、适用限制。
    数字必须保留对应基准、对比对象和实验条件；作者报告的结果须明确归因，不能泛化为已证实结论。
+   区分研究团队、使用的模型或工具、以及实验产出；例如不能把用于生成代码的模型写成研究产出的模型。
+   如果只有二手报道，保留“据报道”等归因，对缺少直接证据的结论不要自行确认。
    素材没有给出局限时说明“来源未说明适用限制”，不得自行推断或编造。
    GitHub 条目根据 README 和 Release 说明用途、具体能力与使用条件；项目方的性能宣称须明确归因，
    缺少对比或验证时不得写成已证实的效果，不得把旧 README 功能误写为本次 Release 新增。
@@ -66,12 +68,13 @@ BATCH_PROMPT = """你是一名 AI 领域资讯编辑，为《大模型每日早�
 4. brief: 约 35~85 字的一个完整中文句子，以句号收尾，写明主体和最重要的变化。
    产品或版本发布优先交代可用条件、适用人群或升级影响。论文优先写结论及关键限制。
    只写来源支持的事实，保留专有名词，避免复述完整标题和使用空泛套话。
-5. evidence: 从同一条目的原始描述或标题逐字复制 12~160 字，作为摘要与速读的依据。
-   不能引用其他条目，不能翻译或改写这段引文。正文与标题明显冲突时返回空摘要。
+5. headline: 约 14~32 字的中文短标题，包含主体和变化，省略宣传词和非关键数字。
+6. evidence: 从同一条目的原始正文逐字复制 12~160 字，优先选择支持速读关键变化的句子。
+   不能引用其他条目，不能翻译或改写这段引文。缺少正文证据时返回空字符串，正文与标题明显冲突时返回空摘要。
 
 严格返回 JSON 数组，格式：
 [{"id": "...", "summary": "...", "comment": "", "importance": 3,
-  "brief": "...。", "evidence": "..."}, ...]
+  "brief": "...。", "headline": "...", "evidence": "..."}, ...]
 不要输出任何其他文字。
 
 """
@@ -126,13 +129,13 @@ def _source_mismatch(item: NewsItem) -> bool:
 def _grounded_summary(item: NewsItem, result: dict, source_text: str) -> bool:
     evidence = " ".join(result.get("evidence", "").split())
     sources = (" ".join(item.title.split()), " ".join(source_text.split()))
-    if "evidence" in result and (
+    if evidence and (
         len(evidence) < 12 or not any(evidence in source for source in sources)
     ):
         return False
     headline = _named_terms(item.title)
     source = " ".join(sources).casefold()
-    for output in (result["summary"], result.get("brief", "")):
+    for output in (result["summary"], result.get("brief", ""), result.get("headline", "")):
         if (headline and not any(term in output.casefold() for term in headline)
                 and any(term not in source for term in _named_terms(output))):
             return False
@@ -188,7 +191,7 @@ def _validated_results(data, expected_ids: set[str]) -> dict[str, dict]:
             "comment": _sanitize_comment(comment),
             "importance": importance,
         }
-        for key, limit in (("brief", 200), ("evidence", 160)):
+        for key, limit in (("brief", 200), ("headline", 80), ("evidence", 160)):
             if key in row:
                 value = row[key]
                 results[item_id][key] = value.strip()[:limit] if isinstance(value, str) else ""
@@ -508,10 +511,13 @@ class Summarizer:
             result = results.get(item.id, {})
             item.meta["summary_status"] = "generated" if result else "fallback"
             if result:
+                evidence = " ".join(result.get("evidence", "").split())
+                source_text = " ".join(item.text[:self.max_input_chars_per_item].split())
                 item.meta["grounding_status"] = (
-                    "verified" if result.get("evidence") else "unverified"
+                    "verified" if evidence and evidence in source_text else "unverified"
                 )
                 item.meta["brief_zh"] = result.get("brief", "")
+                item.meta["headline_zh"] = result.get("headline", "")
             use_source_text = (
                 item.section != "community"
                 and item.meta.get("grounding_status") != "source_mismatch"

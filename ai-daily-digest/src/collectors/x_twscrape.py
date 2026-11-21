@@ -16,6 +16,10 @@ from .x_diagnostics import SafeRequestLog, capture_request_events
 
 log = logging.getLogger(__name__)
 COOKIE_FILE = "x-cookies.json"
+OFFICIAL_ACCOUNTS = {
+    "openai", "anthropicai", "googledeepmind", "huggingface", "alibaba_qwen",
+    "deepseek_ai", "kimi_moonshot", "aiatmeta",
+}
 DIAGNOSTIC_HINTS = {
     "authentication_failed": "X 拒绝登录会话；请用同一次登录的两个 Cookie 更新配置。",
     "access_denied": "X 拒绝访问；请先在浏览器检查账号是否需要验证或受到限制。",
@@ -139,6 +143,7 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
         score=min(100, math.log1p(points + comments + reposts) * 10),
         meta={
             "author": username, "points": points, "comments": comments,
+            "first_party": username.casefold() in OFFICIAL_ACCOUNTS,
             "reposts": reposts, "discussion_url": url,
             "published_at": published.astimezone(UTC).isoformat(),
         },
