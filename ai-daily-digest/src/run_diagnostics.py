@@ -2,9 +2,12 @@
 import json
 import logging
 import os
+from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from .editorial import source_content
 from .models import NewsItem
 from .renderer import write_json
 from .utils import safe_http_url
@@ -12,6 +15,18 @@ from .utils import safe_http_url
 log = logging.getLogger(__name__)
 HEALTHY = {"ok", "empty", "stale"}
 FAILED = {"failed", "partial", "undated", "invalid_credentials"}
+SELECTION_STAGES = {
+    "section_disabled": "所属板块未启用",
+    "invalid_url": "没有可用的原文链接",
+    "merged_id_or_url": "与另一条稿件重复",
+    "merged_event": "合并到同一事件的其他稿件",
+    "seen_in_previous_issue": "近期已刊出",
+    "pre_summary_quality": "摘要前筛选未通过",
+    "summary_candidate_limit": "未进入摘要候选配额",
+    "post_summary_quality": "摘要后筛选未通过",
+    "section_limit": "未进入板块展示配额",
+}
+SUMMARY_STATES = {"generated": "已生成", "fallback": "已降级", "raw": "跳过生成"}
 
 
 def mark_dropped(before: list[NewsItem], after: list[NewsItem], reason: str) -> None:
@@ -98,9 +113,59 @@ def _candidate_rows(items: list[NewsItem], selected: list[NewsItem], must_reads:
             "grounding_status": meta.get("grounding_status"),
             "follow_up_date": meta.get("follow_up_date"),
             "outcome": meta.get("selection_stage", "published" if id(item) in shown else "omitted"),
+            "selection_reason": meta.get("selection_reason"),
             "published": id(item) in shown,
             "must_read": id(item) in featured,
         }
+
+
+def rejected_candidates(cfg: dict, items: list[NewsItem], selected: list[NewsItem]) -> list[dict]:
+    """Build the public selection view from candidate decisions and displayable source material."""
+    rows = list(_candidate_rows(items, selected, []))
+    groups = defaultdict(list)
+    public = [item.source != "X" or item.meta.get("public_post") is True for item in items]
+    source_limit = cfg.get("llm", {}).get("max_input_chars_per_item", 2400)
+    for row, item, visible in zip(rows, items, public, strict=True):
+        if row["published"] or not visible:
+            continue
+        stage = row["outcome"]
+        section = cfg["sections"].get(item.section, {})
+        limit = section.get("limit", 8)
+        reason = row["selection_reason"]
+        if stage == "section_limit":
+            reason = f"该板块最多刊出 {limit} 条"
+            if section.get("max_per_source"):
+                reason += f"，优先兼顾每个来源最多 {section['max_per_source']} 条"
+        if stage == "summary_candidate_limit":
+            reason = f"该板块最多送 {limit * 2} 条生成摘要"
+        merged_title = ""
+        if (target := row["merged_into"]) and public[target - 1]:
+            merged_title = rows[target - 1]["title"]
+        url = row["url"]
+        if url and (item.meta.get("link_status") == "rss_only" or "@" in urlsplit(url).netloc):
+            url = None
+        body = source_content(item)
+        published_at = item.meta.get("published_at") or item.meta.get("published") or ""
+        groups[item.section].append({
+            "title": item.title, "source": item.source, "url": url,
+            "date": str(published_at)[:10],
+            "stage": SELECTION_STAGES.get(stage, "本期未入选"), "reason": reason,
+            "merged_title": merged_title, "previous_date": item.meta.get("previous_report_date"),
+            "quality": row["quality_score"], "quality_reasons": row["quality_reasons"],
+            "percentile": row["engagement_percentile"],
+            "importance": row["importance"], "raw_score": f"{item.score:g}",
+            "summary_status": SUMMARY_STATES.get(row["summary_status"], "未生成"),
+            "summary": item.summary_zh if row["summary_status"] == "generated" else "",
+            "comment": item.comment, "body": body[:source_limit],
+            "truncated": len(body) > source_limit,
+        })
+    return [
+        {
+            "key": key, "title": cfg["sections"].get(key, {}).get("title", key),
+            "entries": groups[key],
+        }
+        for key in dict.fromkeys((*cfg["sections"], *groups)) if key in groups
+    ]
 
 
 def write_editorial_log(cfg: dict, today: date, diagnostics: dict, items: list[NewsItem],

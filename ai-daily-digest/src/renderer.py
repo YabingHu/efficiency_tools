@@ -13,12 +13,12 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .editorial import LOW_SIGNAL_PATTERNS, has_sufficient_source, quality_sort_key, topic_tags
 from .models import NewsItem
+from .topics import ROUTABLE_SECTIONS, paper_topic_sections
 from .utils import canonical_url, safe_http_url, take_with_source_limit
 
 log = logging.getLogger(__name__)
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-PAPER_BASE_SECTIONS = ("papers", "arxiv")
 
 
 def _environment() -> Environment:
@@ -92,12 +92,7 @@ def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[Ne
 
 def _paper_section_keys(cfg: dict) -> list[str]:
     """Return enabled paper-related sections in display order."""
-    topic_keys = [
-        rule.get("section")
-        for rule in cfg.get("paper_topics", []) or []
-        if rule.get("section")
-    ]
-    paper_keys = set(PAPER_BASE_SECTIONS) | set(topic_keys)
+    paper_keys = ROUTABLE_SECTIONS | paper_topic_sections(cfg)
     return [
         key for key, sec_cfg in cfg["sections"].items()
         if key in paper_keys and sec_cfg.get("enabled", True)
@@ -205,7 +200,8 @@ def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[Ne
 
 def render(cfg: dict, items: list[NewsItem], overview: list[str],
            report_date: datetime, *, today_threads: list[dict] | None = None,
-           update_latest: bool = True, section_notes: dict[str, str] | None = None) -> Path:
+           update_latest: bool = True, section_notes: dict[str, str] | None = None,
+           rejected: list[dict] | None = None) -> Path:
     env = _environment()
     template = env.get_template("report.html.j2")
     # 保留旧调用参数兼容历史工具，但不再渲染无文章绑定的要点和主线。
@@ -236,8 +232,9 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
     sections = []
     empty_sections = []
     section_notes = section_notes or {}
+    rejected_keys = {group["key"] for group in rejected or []}
     for key, section in rendered.items():
-        if not section["entries"]:
+        if not section["entries"] and (key not in paper_key_set or key in rejected_keys):
             empty_sections.append((section["title"], section_notes.get(key, "本期无入选内容")))
         if key in paper_key_set:
             if key == paper_keys[0]:
@@ -263,6 +260,8 @@ def render(cfg: dict, items: list[NewsItem], overview: list[str],
         must_reads=must_reads,
         sections=sections,
         empty_sections=empty_sections,
+        rejected=rejected or [],
+        rejected_count=sum(len(group["entries"]) for group in rejected or []),
         generated_at=datetime.now(
             ZoneInfo(cfg.get("timezone", "Asia/Shanghai"))
         ).strftime("%Y-%m-%d %H:%M %Z"),

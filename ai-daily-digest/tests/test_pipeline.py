@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from bs4 import BeautifulSoup
 
 from src import main
 from src.history import sync_history
@@ -99,13 +100,12 @@ def test_pipeline_filters_high_heat_noise_before_trimming(monkeypatch, cfg):
 
     main.main()
 
-    from pathlib import Path
-
     report = Path(cfg["_root"]) / cfg["output_dir"] / "2020-01-01.html"
-    content = report.read_text(encoding="utf-8")
-    assert "LLM evaluation method" in content
-    assert "Rust web framework" not in content
-    assert "今日必读" not in content
+    soup = BeautifulSoup(report.read_text(encoding="utf-8"), "html.parser")
+    cards = soup.select("#section-community .card .title")
+    assert [card.get_text(strip=True) for card in cards] == ["LLM evaluation method"]
+    assert len(soup.select(".selection-review .rejected-item")) == 4
+    assert not soup.select_one("#must-read-heading")
 
 
 def test_rss_runs_when_only_media_is_enabled(monkeypatch, cfg):
@@ -154,6 +154,38 @@ def test_coverage_notes_distinguish_selection_from_collection(cfg):
     assert notes["github"] == "采集到 1 条，选稿后无入选内容"
     assert notes["papers"] == "有来源采集异常，本期未取得候选"
     assert notes["community"] == "本期采集未取得候选"
+
+
+def test_report_shows_rejected_candidates_with_actual_decisions(monkeypatch, cfg):
+    cfg["dedup"]["enabled"] = False
+    selected = item("Published LLM release")
+    selected.text = "A language model release with detailed documentation. " * 6
+    duplicate = item("Duplicate <script>untrusted</script>")
+    short = item("AI tool with short description", "github", "https://github.com/example/tool")
+    short.text = "Tiny sample"
+    private = NewsItem("x:1", "community", "Protected X post", "https://x.com/test/status/1", "X")
+    incoming = [selected, duplicate, short, private]
+    monkeypatch.setattr(main, "load_config", lambda: cfg)
+    monkeypatch.setattr(main, "setup_logging", lambda *_: None)
+    monkeypatch.setattr(main, "collect_all", lambda *_: (incoming, {}))
+    monkeypatch.setattr("sys.argv", ["digest", "--no-llm"])
+
+    main.main()
+
+    output = Path(cfg["_root"]) / cfg["output_dir"] / "index.html"
+    soup = BeautifulSoup(output.read_text(encoding="utf-8"), "html.parser")
+    review = soup.select_one("details.selection-review")
+    assert review and not review.has_attr("open")
+    assert len(review.select(".rejected-item")) == 2
+    text = review.get_text(" ", strip=True)
+    assert "有效正文未达到门槛（至少 160 字" in text
+    assert "Tiny sample" in text
+    assert "合并到《Published LLM release》" in text
+    assert "Protected X post" not in text
+    assert review.select_one('a[href="https://github.com/example/tool"]')
+    assert not review.select("script")
+    assert "Duplicate <script>untrusted</script>" in text
+    assert not soup.select_one("nav a[href='#section-github']")
 
 
 def test_no_llm_fallback_shows_source_text():

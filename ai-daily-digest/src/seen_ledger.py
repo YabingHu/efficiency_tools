@@ -98,6 +98,8 @@ class SeenLedger:
                 if additions:
                     item.meta["follow_up_date"] = max(value for _, value in previous)
                     item.meta["follow_up_changes"] = additions
+                else:
+                    item.meta["previous_report_date"] = max(value for _, value in previous)
                 return not additions
         for key in _entry_keys(item):
             seen = self._entries.get(key)
@@ -110,6 +112,7 @@ class SeenLedger:
                     for alias in self._entries
                 ):
                     continue
+                item.meta["previous_report_date"] = seen
                 return True
         return False
 

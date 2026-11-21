@@ -150,9 +150,12 @@ def test_paper_sections_render_as_one_switchable_group(cfg):
 
 def test_empty_paper_topics_are_hidden_from_switcher(cfg):
     for key, section in cfg["sections"].items():
-        section["enabled"] = key in {"papers", "arxiv", "eval", "agent", "github"}
+        section["enabled"] = key in {"arxiv", "eval", "agent", "data", "harness", "inference"}
     items = [
         NewsItem("arxiv-1", "arxiv", "arXiv paper", "https://example.com/arxiv", "arXiv"),
+        NewsItem(
+            "arxiv:2611.12345", "inference", "LLM serving", "https://example.com/fast", "arXiv",
+        ),
     ]
 
     path = render(
@@ -164,11 +167,14 @@ def test_empty_paper_topics_are_hidden_from_switcher(cfg):
     nav_html = html.split(
         '<nav class="section-nav" aria-label="日报板块">', 1,
     )[1].split("</nav>", 1)[0]
-    assert 'href="#section-papers-group">📚 论文动态 <span class="count">1</span></a>' in nav_html
+    assert 'href="#section-papers-group">📚 论文动态 <span class="count">2</span></a>' in nav_html
     assert 'id="paper-topic-arxiv"' in html
+    assert 'id="paper-topic-inference"' in html
     assert 'id="paper-topic-papers"' not in html
     assert 'id="paper-topic-eval"' not in html
     assert 'id="paper-topic-agent"' not in html
+    assert 'id="paper-topic-data"' not in html
+    assert 'id="paper-topic-harness"' not in html
 
 
 def test_render_replaces_legacy_overviews_with_linked_must_reads(cfg):

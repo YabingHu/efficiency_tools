@@ -23,6 +23,10 @@ log = logging.getLogger(__name__)
 ROUTABLE_SECTIONS = {"arxiv", "papers"}
 
 
+def is_paper(item: NewsItem) -> bool:
+    return item.section in (ROUTABLE_SECTIONS | {"eval", "agent"}) or item.id.startswith("arxiv:")
+
+
 def paper_topic_rules(cfg: dict) -> list[tuple[str, list[str]]]:
     """返回 [(板块 key, 小写关键词列表), ...]，保持配置顺序（首个命中胜出）。"""
     rules = []

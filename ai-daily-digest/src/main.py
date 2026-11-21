@@ -38,7 +38,7 @@ from .editorial import (
 )
 from .events import annotate_event, merge_event_sources
 from .renderer import check_template, must_read_items, render, selected_items, write_status
-from .run_diagnostics import mark_dropped, write_editorial_log
+from .run_diagnostics import mark_dropped, rejected_candidates, write_editorial_log
 from .seen_ledger import SeenLedger
 from .summarizer import Summarizer
 from .topics import paper_topic_sections, route_paper_topics
@@ -89,12 +89,12 @@ def collect_all(cfg: dict, report_date) -> tuple[list, dict]:
         key for key, section in cfg["sections"].items()
         if section.get("enabled", True)
     }
-    # arXiv 采集器额外供给论文专题板，所以只启用专题板（不启用通用 arxiv 板）时它仍需运行。
+    # 仅启用论文专题时，两个论文采集器也要运行。
     topic_sections = paper_topic_sections(cfg)
     selected = {
         name: collect
         for name, (collect, sections) in COLLECTORS.items()
-        if ((sections | topic_sections) if name == "arxiv" else sections) & enabled
+        if ((sections | topic_sections) if name in {"arxiv", "hf_papers"} else sections) & enabled
     }
     results = {}
     cfg["_collector_status"] = {}
@@ -144,10 +144,10 @@ def section_collection_notes(cfg: dict, items: list, diagnostics: dict) -> dict[
             continue
         sources = [
             name for name, (_, sections) in COLLECTORS.items()
-            if section in sections and name in attempted
+            if name in attempted and (
+                section in sections or (section in topics and name in {"arxiv", "hf_papers"})
+            )
         ]
-        if section in topics and "arxiv" in attempted:
-            sources.append("arxiv")
         if not sources:
             continue
         states = [status.get(name, {}).get("status") for name in sources]
@@ -187,7 +187,7 @@ def deduplicate(items: list, enabled_sections: set[str], *, match_events: bool =
             annotate_event(item)
         valid.append(item)
     ordered = sorted(valid, key=lambda value: (
-        value.section != "papers",
+        value.section != "papers" and value.source != "HF Papers",
         not (value.meta.get("event_key") and value.meta.get("first_party")),
     ))
     for item in ordered:
@@ -309,7 +309,7 @@ def main():
         )
         sys.exit(1)
 
-    # 1.5 论文专题分流：命中主题关键词的 arXiv 论文改归专属板（如「大模型测评」）
+    # 1.5 论文专题分流：标题命中关键词的论文改归专属板。
     route_paper_topics(cfg, items)
 
     # 2. 跨板块去重（HF Papers 与 arXiv 共享 arxiv:<id>，优先保留 papers 板块）
@@ -380,14 +380,15 @@ def main():
     log.info("摘要后质量过滤 %d 条（原 %d 条）", len(deduped), before_post_quality)
 
     # 5. 渲染输出
+    published = selected_items(cfg, deduped)
+    must_reads = must_read_items(cfg, deduped)
+    mark_dropped(deduped, published, "section_limit")
     out_path = render(
         cfg, deduped, [], report_date,
         update_latest=is_current,
         section_notes=section_collection_notes(cfg, items, diagnostics),
+        rejected=rejected_candidates(cfg, items, published),
     )
-    published = selected_items(cfg, deduped)
-    must_reads = must_read_items(cfg, deduped)
-    mark_dropped(deduped, published, "section_limit")
     diagnostics["source_health"] = write_editorial_log(
         cfg, report_date.date(), diagnostics, items, published, must_reads,
         live=live_diagnostics, success=True,

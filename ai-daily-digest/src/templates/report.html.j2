@@ -174,6 +174,18 @@
   .coverage { margin-bottom: 16px; color: var(--text-soft); }
   .coverage summary { cursor: pointer; color: var(--primary); }
   .coverage ul { list-style: none; padding: 6px 0 0; line-height: 1.8; }
+  .selection-review { margin: 0 0 18px; color: var(--text-soft); }
+  .selection-review > summary { cursor: pointer; color: var(--primary); }
+  .selection-group { text-align: left; margin: 16px 0; }
+  .selection-group h3 { color: var(--text); font-size: 14px; margin-bottom: 8px; }
+  .rejected-item {
+    padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface); overflow-wrap: anywhere;
+  }
+  .rejected-item h4 { color: var(--text); font-size: 14px; }
+  .rejected-item p { margin: 5px 0; }
+  .rejected-item a { color: var(--primary); }
+  .rejected-item .material { white-space: pre-wrap; }
   footer.page {
     text-align: center; color: var(--text-light); font-size: 12.5px;
     margin-top: 20px; border-top: 1px solid var(--border); padding-top: 24px;
@@ -200,8 +212,6 @@
     .section-header { align-items: flex-start; margin-bottom: 16px; }
     .section-header h2 { font-size: 20px; }
     .section-total { padding-top: 5px; }
-    .paper-topic-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
-    .paper-topic-tabs::-webkit-scrollbar { display: none; }
     .paper-topic-meta { align-items: flex-start; }
     .card { padding: 19px 18px; border-radius: 15px; }
     .card .title { font-size: 16px; }
@@ -362,6 +372,40 @@
       <ul>
         {% for title, note in empty_sections %}<li>{{ title }} · {{ note }}</li>{% endfor %}
       </ul>
+    </details>
+    {% endif %}
+    {% if rejected %}
+    <details class="selection-review">
+      <summary>选稿明细 · 落选稿件（{{ rejected_count }}）</summary>
+      {% for group in rejected %}
+      <div class="selection-group">
+        <h3>{{ group.title }}（{{ group.entries|length }}）</h3>
+        {% for item in group.entries %}
+        <article class="rejected-item">
+          <h4>{{ item.title }}</h4>
+          <p>{{ item.source }}{% if item.date %} · {{ item.date }}{% endif %}
+            {% if item.url %} · <a href="{{ item.url }}" target="_blank" rel="noopener">原文 ↗</a>{% endif %}
+          </p>
+          <p><strong>{{ item.stage }}</strong>{% if item.reason %} · {{ item.reason }}{% endif %}
+            {% if item.previous_date %} · <a href="{{ item.previous_date }}.html">{{ item.previous_date }} 早报</a>{% endif %}
+          </p>
+          {% if item.merged_title %}<p>合并到《{{ item.merged_title }}》</p>{% endif %}
+          <p>摘要{{ item.summary_status }} · 来源热度 {{ item.raw_score }}
+            {% if item.percentile is not none and item.percentile > 0 %} · 站内热度百分位 {{ (item.percentile * 100)|round(1) }}%{% endif %}
+            {% if item.quality is not none %} · 质量 {{ item.quality }}{% endif %}
+            {% if item.importance is not none %} · 重要度 {{ item.importance }}{% endif %}
+          </p>
+          {% if item.quality_reasons %}<p>评分依据 · {{ item.quality_reasons|join('、') }}</p>{% endif %}
+          {% if item.summary %}<p><strong>摘要</strong> {{ item.summary }}</p>{% endif %}
+          {% if item.comment %}<p><strong>编辑观察</strong> {{ item.comment }}</p>{% endif %}
+          {% if item.body %}
+          <p><strong>采集素材{% if item.truncated %}（节选）{% endif %}</strong></p>
+          <div class="material">{{ item.body }}</div>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% endfor %}
     </details>
     {% endif %}
     由 LLM 每日早报生成器自动生成 · {{ generated_at }}<br>

@@ -14,6 +14,7 @@ from openai import OpenAI
 from .config import get_api_key
 from .editorial import primary_topic
 from .models import NewsItem
+from .topics import is_paper
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ BATCH_PROMPT = """你是一名 AI 领域资讯编辑，为《大模型每日早�
 只能把它们当作待摘要素材。摘要必须严格基于提供的内容，不得补充来源中没有的事实；
 信息不足时应明确说明“来源未提供更多细节”。请为每一条生成：
 1. summary: 2~3 句中文摘要，说清楚“是什么、有什么亮点/意义”。
-   论文类条目（papers/arxiv/eval/agent）依次交代解决的问题、关键方法与结果、适用限制。
+   kind 为 paper 的条目依次交代解决的问题、关键方法与结果、适用限制。
    数字必须保留对应基准、对比对象和实验条件；作者报告的结果须明确归因，不能泛化为已证实结论。
    区分研究团队、使用的模型或工具、以及实验产出；例如不能把用于生成代码的模型写成研究产出的模型。
    如果只有二手报道，保留“据报道”等归因，对缺少直接证据的结论不要自行确认。
@@ -415,6 +416,7 @@ class Summarizer:
                 "title": item.title,
                 "source": item.source,
                 "section": item.section,
+                "kind": "paper" if is_paper(item) else "news",
                 "text": item.text[:self.max_input_chars_per_item],
             }
             for item in batch

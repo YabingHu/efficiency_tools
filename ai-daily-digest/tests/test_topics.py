@@ -75,6 +75,21 @@ def test_hf_papers_are_rerouted_into_topic_boards():
     assert item.section == "eval"
 
 
+def test_default_topics_route_papers_to_their_most_specific_section(cfg):
+    items = [
+        paper("1", "Test-Time Scaling for Language Model Reasoning"),
+        paper("2", "Parallel Decoding for Efficient LLM Serving"),
+        paper("3", "A Dataset for Training Long-Horizon Agents"),
+        paper("4", "Harness-Managed Memory for LLM Agents", section="papers"),
+        paper("5", "A Benchmark for Agent Harnesses"),
+        paper("6", "Harnessing Large Language Models for Translation"),
+    ]
+    route_paper_topics(cfg, items)
+    assert [item.section for item in items] == [
+        "reasoning", "inference", "data", "harness", "eval", "arxiv",
+    ]
+
+
 def test_disabled_topic_section_leaves_paper_in_arxiv():
     cfg = topic_cfg()
     cfg["sections"]["eval"]["enabled"] = False

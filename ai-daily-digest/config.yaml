@@ -75,6 +75,26 @@ sections:
     title: "🧪 大模型测评"
     subtitle: "Benchmark · 评测集 · Leaderboard · LLM-as-a-judge"
     limit: 6
+  reasoning:
+    enabled: true
+    title: "🧠 推理与思考"
+    subtitle: "推理方法 · 思维链 · 测试时扩展"
+    limit: 4
+  inference:
+    enabled: true
+    title: "⚡ 推理优化"
+    subtitle: "模型服务 · 解码加速 · KV Cache · 量化"
+    limit: 4
+  data:
+    enabled: true
+    title: "🗂️ 数据与数据集"
+    subtitle: "训练语料 · 数据筛选 · 合成数据"
+    limit: 4
+  harness:
+    enabled: true
+    title: "🛠️ Harness 与框架"
+    subtitle: "Agent Harness · 工具编排 · 上下文工程 · 运行时"
+    limit: 4
   agent:
     enabled: true
     title: "🤖 智能体"
@@ -110,7 +130,7 @@ sections:
     limit: 3
     max_per_source: 2
 
-# 论文专题分流：标题命中关键词的 arXiv 论文归入专属板块（section 需对应 sections key）。
+# 论文专题分流：标题命中关键词的 arXiv 或 HF Papers 论文归入专属板块。
 # 关键词只匹配标题（摘要里 benchmark/evaluation 太泛滥，匹配摘要会误判半数论文）。
 # 采集端会自动把这里的关键词并入 arXiv 抓取过滤，无需重复写进 sources.arxiv.keywords。
 # 按顺序匹配，首个命中的专题胜出。加新主题只需在此追加一段 + 在 sections 里加对应板块。
@@ -133,8 +153,62 @@ paper_topics:
       - can llms
       - do llms
       - how well
-  # agent 在 eval 之后：既是 benchmark 又是 agent 的论文（"A Benchmark for LLM Agents"）
-  # 归入 eval，因为其主要贡献是评测。"agent" 子串已覆盖 multi-agent / llm agent / agentic。
+  # 评测优先，具体方法和框架专题排在通用智能体之前。
+  - section: harness
+    keywords:
+      - agent harness
+      - harnesses
+      - "harness-"
+      - "-harness"
+      - "harness:"
+      - harness engineering
+      - harness design
+      - harness optimization
+      - harness for
+      - agent framework
+      - agentic framework
+      - agent runtime
+      - agent scaffold
+      - agent orchestration
+      - tool orchestration
+      - context engineering
+  - section: inference
+    keywords:
+      - llm inference
+      - llm serving
+      - model serving
+      - inference acceleration
+      - inference efficiency
+      - efficient inference
+      - speculative decoding
+      - parallel decoding
+      - kv cache
+      - kv-cache
+      - continuous batching
+      - post-training quantization
+      - weight quantization
+  - section: data
+    keywords:
+      - dataset
+      - training data
+      - data selection
+      - data filtering
+      - data curation
+      - data mixture
+      - data deduplication
+      - synthetic data
+      - instruction data
+      - training corpus
+      - multilingual corpus
+  - section: reasoning
+    keywords:
+      - reasoning
+      - chain of thought
+      - chain-of-thought
+      - tree of thoughts
+      - test-time scaling
+      - inference-time scaling
+      - process reward model
   - section: agent
     keywords:
       - agent

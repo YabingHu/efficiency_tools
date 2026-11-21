@@ -8,6 +8,7 @@ from collections import defaultdict
 
 from .events import annotate_event, merge_event_sources
 from .models import NewsItem
+from .topics import is_paper
 
 AI_TERMS = (
     "ai", "llm", "gpt", "agent", "rag", "model", "transformer", "claude",
@@ -117,7 +118,8 @@ def normalize_engagement(items: list[NewsItem]) -> None:
     sections = {"papers", "github", "community", "community_cn"}
     for item in items:
         item.meta["engagement_percentile"] = 0.0
-        if item.section in sections and item.score > 0:
+        ranked_paper = is_paper(item) and item.source == "HF Papers"
+        if item.score > 0 and (item.section in sections or ranked_paper):
             by_source[item.source].append(item)
     for candidates in by_source.values():
         scores = sorted(item.score for item in candidates)
@@ -131,7 +133,7 @@ def normalize_engagement(items: list[NewsItem]) -> None:
 def score_item_quality(item: NewsItem) -> float:
     """Compute a stable editorial quality score and store reasons in metadata."""
     text = _haystack(item)
-    score = float(SECTION_BASE.get(item.section, 12))
+    score = float(SECTION_BASE.get(item.section, 22 if is_paper(item) else 12))
     reasons: list[str] = []
 
     if item.importance:
@@ -195,18 +197,20 @@ def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[
     # 硬门槛独立于热度、模型评分和稀疏板块保底；摘要也不能为原始无关内容补相关性。
     quality_cfg = cfg.get("quality", {})
     min_source_chars = quality_cfg.get("min_source_chars", {})
-    items = [
-        item for item in items
-        if (
-            item.section not in {"community", "community_cn", "github"}
-            or has_community_ai_context(item.title, source_content(item))
-        ) and (
-            item.section not in {"community", "community_cn", "github"}
-            or has_sufficient_source(
-                item, min_source_chars.get(item.section, 160 if item.section == "github" else 60),
-            )
-        )
-    ]
+    eligible = []
+    for item in items:
+        if item.section in {"community", "community_cn", "github"}:
+            if not has_community_ai_context(item.title, source_content(item)):
+                item.meta["selection_reason"] = "标题和有效正文未命中 AI 相关性规则"
+                continue
+            minimum = min_source_chars.get(item.section, 160 if item.section == "github" else 60)
+            if not has_sufficient_source(item, minimum):
+                item.meta["selection_reason"] = (
+                    f"有效正文未达到门槛（至少 {minimum} 字且不能只复述标题）"
+                )
+                continue
+        eligible.append(item)
+    items = eligible
     if not quality_cfg.get("enabled", True):
         apply_quality_scores(items)
         return items
@@ -241,11 +245,14 @@ def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[
             )[:minimum]
             kept_by_section[section].extend(fallback)
 
-    filtered = [
-        item
-        for item in items
-        if item in kept_by_section.get(item.section, [])
-    ]
+    filtered = []
+    for item in items:
+        if item in kept_by_section.get(item.section, []):
+            filtered.append(item)
+        else:
+            quality = item.meta["quality_score"]
+            threshold = thresholds.get(item.section, default_threshold)
+            item.meta["selection_reason"] = f"质量分 {quality:g} 低于入选门槛 {threshold:g}"
     return filtered
 
 
@@ -260,7 +267,7 @@ def quality_sort_key(item: NewsItem) -> tuple[float, int, float]:
 def topic_tags(item: NewsItem) -> list[str]:
     text = _haystack(item)
     tags = []
-    if item.section in {"papers", "arxiv", "eval", "agent"}:
+    if is_paper(item):
         tags.append("论文")
     if any(term in text for term in ("agent", "智能体", "tool use", "tool calling")):
         tags.append("智能体")
@@ -296,7 +303,7 @@ def primary_topic(item: NewsItem) -> str:
         return "工程优化"
     if any(term in text for term in ("open source", "weights", "开源", "github")):
         return "开源"
-    if item.section in {"papers", "arxiv"}:
+    if is_paper(item):
         return "论文"
     if item.section in {"industry", "media"}:
         return "产业动态"
@@ -344,7 +351,7 @@ def _near_duplicate_rank(item: NewsItem) -> tuple[bool, float, int, float, int]:
         quality_score,
         int(item.importance or 0),
         float(item.meta.get("engagement_percentile", item.score or 0)),
-        SECTION_PRIORITY.get(item.section, 0),
+        SECTION_PRIORITY.get(item.section, 8 if is_paper(item) else 0),
     )
 
 

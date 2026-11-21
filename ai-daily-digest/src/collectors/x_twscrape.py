@@ -126,7 +126,8 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
         return None
     if not since <= published <= until or getattr(tweet, "retweetedTweet", None):
         return None
-    username = getattr(getattr(tweet, "user", None), "username", "")
+    user = getattr(tweet, "user", None)
+    username = getattr(user, "username", "")
     native_id = str(getattr(tweet, "id", ""))
     text = html.unescape(getattr(tweet, "rawContent", "") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", username):
@@ -144,6 +145,7 @@ def _to_item(tweet, since: datetime, until: datetime) -> NewsItem | None:
         meta={
             "author": username, "points": points, "comments": comments,
             "first_party": username.casefold() in OFFICIAL_ACCOUNTS,
+            "public_post": getattr(user, "protected", None) is False,
             "reposts": reposts, "discussion_url": url,
             "published_at": published.astimezone(UTC).isoformat(),
         },
