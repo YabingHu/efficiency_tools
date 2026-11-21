@@ -7,8 +7,8 @@ initial_visible_items: 4  # 每个板块默认显示条数，其余内容可展�
 # 编辑质量层：摘要前后都会计算综合质量分，用于过滤弱相关/低信息密度条目并重排展示。
 quality:
   enabled: true
-  min_items_per_section: 1
-  min_source_chars:  # 原始素材硬门槛，不受热度、模型评分或板块保底影响
+  min_items_per_section: 2  # 候选充足时各板块至少展示两条
+  min_source_chars:  # 正常入选的原始素材长度要求
     github: 160
     community: 60
     community_cn: 60

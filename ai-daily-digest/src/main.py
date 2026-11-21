@@ -360,8 +360,10 @@ def main():
         log.info("--no-llm：跳过摘要，条目以原文展示")
         apply_no_llm_fallback(deduped)
     else:
+        source_only = [item for item in deduped if item.meta.get("short_source")]
+        apply_no_llm_fallback(source_only)
         summarizer = Summarizer(cfg)
-        summarizer.summarize_items(deduped)
+        summarizer.summarize_items([item for item in deduped if not item.meta.get("short_source")])
         diagnostics["summary_status"] = {
             "generated_items": sum(
                 item.meta.get("summary_status") == "generated" for item in deduped
@@ -416,6 +418,7 @@ def main():
                 "post_llm": post_quality_dropped,
             },
             "published_items": len(published),
+            "supplemental_items": sum(bool(item.meta.get("coverage_note")) for item in published),
             "must_reads": len(must_reads),
             **diagnostics,
             "section_counts": {

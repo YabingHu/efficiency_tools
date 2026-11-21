@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import re
 from bisect import bisect_left, bisect_right
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from .events import annotate_event, merge_event_sources
 from .models import NewsItem
@@ -193,67 +193,56 @@ def apply_quality_scores(items: list[NewsItem]) -> None:
 
 
 def filter_noise_items(cfg: dict, items: list[NewsItem], *, stage: str) -> list[NewsItem]:
-    """Drop obvious low-signal items while preserving room for sparse sections."""
-    # 硬门槛独立于热度、模型评分和稀疏板块保底；摘要也不能为原始无关内容补相关性。
+    """Keep qualified candidates and supplement sparse sections from viable originals."""
     quality_cfg = cfg.get("quality", {})
+    quality_enabled = quality_cfg.get("enabled", True)
+    minimum = quality_cfg.get("min_items_per_section", 1) if quality_enabled else 0
     min_source_chars = quality_cfg.get("min_source_chars", {})
-    eligible = []
-    for item in items:
-        if item.section in {"community", "community_cn", "github"}:
-            if not has_community_ai_context(item.title, source_content(item)):
-                item.meta["selection_reason"] = "标题和有效正文未命中 AI 相关性规则"
-                continue
-            minimum = min_source_chars.get(item.section, 160 if item.section == "github" else 60)
-            if not has_sufficient_source(item, minimum):
-                item.meta["selection_reason"] = (
-                    f"有效正文未达到门槛（至少 {minimum} 字且不能只复述标题）"
-                )
-                continue
-        eligible.append(item)
-    items = eligible
-    if not quality_cfg.get("enabled", True):
-        apply_quality_scores(items)
-        return items
-
     thresholds = quality_cfg.get("min_score", {})
     stage_thresholds = thresholds.get(stage) if isinstance(thresholds, dict) else None
     if isinstance(stage_thresholds, dict):
         thresholds = stage_thresholds
     default_threshold = thresholds.get("default", 18 if stage == "pre_llm" else 24)
-    kept_by_section: dict[str, list[NewsItem]] = defaultdict(list)
+    kept_ids = set()
+    counts = Counter()
+    reserves: dict[str, list[NewsItem]] = defaultdict(list)
     for item in items:
+        item.meta.pop("coverage_note", None)
+        item.meta.pop("short_source", None)
+        item.meta.pop("selection_reason", None)
+        section = item.section
+        reason = ""
+        if section in {"community", "community_cn", "github"}:
+            if not has_community_ai_context(item.title, source_content(item)):
+                item.meta["selection_reason"] = "标题和有效正文未命中 AI 相关性规则"
+                continue
+            min_chars = min_source_chars.get(section, 160 if section == "github" else 60)
+            if not has_sufficient_source(item, min_chars):
+                reason = f"有效正文未达到门槛（至少 {min_chars} 字且不能只复述标题）"
+                item.meta["short_source"] = True
         quality = score_item_quality(item)
-        threshold = thresholds.get(item.section, default_threshold)
-        if quality >= threshold:
-            kept_by_section[item.section].append(item)
+        threshold = thresholds.get(section, default_threshold)
+        if not reason and (not quality_enabled or quality >= threshold):
+            kept_ids.add(id(item))
+            counts[section] += 1
+            continue
+        item.meta["selection_reason"] = reason or f"质量分 {quality:g} 低于入选门槛 {threshold:g}"
+        if (minimum and has_sufficient_source(item, 1)
+                and item.meta.get("grounding_status") != "source_mismatch"):
+            reserves[section].append(item)
 
-    # 其他板块保留原来的稀疏样本策略；开放社区允许没有合格内容。
-    minimum = quality_cfg.get("min_items_per_section", 1)
-    if minimum:
-        original_by_section: dict[str, list[NewsItem]] = defaultdict(list)
-        for item in items:
-            original_by_section[item.section].append(item)
-        for section, original in original_by_section.items():
-            if section in {"community", "community_cn"}:
-                continue
-            if kept_by_section.get(section):
-                continue
-            fallback = sorted(
-                original,
-                key=lambda item: item.meta.get("quality_score", 0),
-                reverse=True,
-            )[:minimum]
-            kept_by_section[section].extend(fallback)
-
-    filtered = []
-    for item in items:
-        if item in kept_by_section.get(item.section, []):
-            filtered.append(item)
-        else:
-            quality = item.meta["quality_score"]
-            threshold = thresholds.get(item.section, default_threshold)
-            item.meta["selection_reason"] = f"质量分 {quality:g} 低于入选门槛 {threshold:g}"
-    return filtered
+    for section, candidates in reserves.items():
+        limit = cfg.get("sections", {}).get(section, {}).get("limit", minimum)
+        gaps = max(0, min(minimum, limit) - counts[section])
+        ranked = sorted(
+            candidates,
+            key=lambda item: (not item.meta.get("short_source"), quality_sort_key(item)),
+            reverse=True,
+        )
+        for item in ranked[:gaps]:
+            item.meta["coverage_note"] = item.meta.pop("selection_reason")
+            kept_ids.add(id(item))
+    return [item for item in items if id(item) in kept_ids]
 
 
 def quality_sort_key(item: NewsItem) -> tuple[float, int, float]:

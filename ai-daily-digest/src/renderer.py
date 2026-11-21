@@ -80,7 +80,10 @@ def render_archive(cfg: dict, report_dates: list[str], *, retention_days: int) -
 
 def _section_entries(cfg: dict, sec_cfg: dict, items: list[NewsItem]) -> list[NewsItem]:
     """一个板块最终展示的条目：按编辑质量分、重要度与来源热度排序后限流截断。"""
-    sec_items = sorted(items, key=quality_sort_key, reverse=True)
+    sec_items = sorted(
+        items, key=lambda item: (not item.meta.get("coverage_note"), quality_sort_key(item)),
+        reverse=True,
+    )
     for item in sec_items:
         item.meta["topic_tags"] = topic_tags(item)
     limit = sec_cfg.get("limit", 8)
@@ -171,6 +174,7 @@ def must_read_items(cfg: dict, items: list[NewsItem], limit: int = 5) -> list[Ne
             quality_sort_key(item)[0] < requirements.get("min_quality_score", 65)
             or not has_sufficient_source(item, requirements.get("min_source_chars", 160))
             or not item.summary_zh.strip()
+            or item.meta.get("coverage_note")
             or item.meta.get("summary_status") in {"fallback", "raw"}
             or item.meta.get("grounding_status") != "verified"
             or LOW_SIGNAL_PATTERNS[0].search(item.summary_zh)

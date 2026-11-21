@@ -123,6 +123,20 @@ def test_filter_noise_items_keeps_best_fallback_for_sparse_section():
     assert [value.id for value in filtered] == ["better"]
 
 
+@pytest.mark.parametrize("stage", ["pre_llm", "post_llm"])
+def test_two_item_floor_adds_only_the_best_relevant_reserve(stage):
+    cfg = {"quality": {"min_items_per_section": 2, "min_score": {"default": 70}}}
+    strong = item("strong", section="industry", text="AI model release details. " * 12)
+    better = item("better", section="industry", text="AI model release details. " * 12)
+    lower = item("lower", section="industry", text="AI model release details. " * 12)
+    strong.importance, better.importance, lower.importance = 5, 2, 1
+
+    assert filter_noise_items(cfg, [strong, lower, better], stage=stage) == [strong, better]
+    assert "coverage_note" not in strong.meta
+    assert "低于入选门槛" in better.meta["coverage_note"]
+    assert "低于入选门槛" in lower.meta["selection_reason"]
+
+
 def test_filter_noise_items_uses_looser_pre_llm_threshold():
     cfg = {
         "quality": {

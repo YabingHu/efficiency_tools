@@ -158,6 +158,7 @@ def test_coverage_notes_distinguish_selection_from_collection(cfg):
 
 def test_report_shows_rejected_candidates_with_actual_decisions(monkeypatch, cfg):
     cfg["dedup"]["enabled"] = False
+    cfg["quality"]["enabled"] = False
     selected = item("Published LLM release")
     selected.text = "A language model release with detailed documentation. " * 6
     duplicate = item("Duplicate <script>untrusted</script>")
@@ -186,6 +187,35 @@ def test_report_shows_rejected_candidates_with_actual_decisions(monkeypatch, cfg
     assert not review.select("script")
     assert "Duplicate <script>untrusted</script>" in text
     assert not soup.select_one("nav a[href='#section-github']")
+
+
+def test_sparse_section_publishes_a_short_source_as_supplement(monkeypatch, cfg):
+    cfg["dedup"]["enabled"] = False
+    regular = item("LLM release with documentation", "github", "https://github.com/example/full")
+    regular.text = "The repository documents model loading and batched inference. " * 6
+    short = item("LLM deployment tool", "github", "https://github.com/example/short")
+    short.text = "Runs GGUF models locally with a single command."
+    repeat = item("AI tool title only", "github", "https://github.com/example/repeat")
+    repeat.text = repeat.title
+    incoming = [short, regular, repeat]
+    monkeypatch.setattr(main, "load_config", lambda: cfg)
+    monkeypatch.setattr(main, "setup_logging", lambda *_: None)
+    monkeypatch.setattr(main, "collect_all", lambda *_: (incoming, {}))
+    monkeypatch.setattr("sys.argv", ["digest", "--no-llm"])
+
+    main.main()
+
+    output = Path(cfg["_root"]) / cfg["output_dir"]
+    soup = BeautifulSoup((output / "index.html").read_text(encoding="utf-8"), "html.parser")
+    cards = soup.select("#section-github article.card")
+    assert [card.select_one(".title").get_text(strip=True) for card in cards] == [
+        regular.title, short.title,
+    ]
+    assert "补充报道 · 资料简短" in cards[1].get_text(" ", strip=True)
+    assert short.text in cards[1].select_one(".summary").get_text(strip=True)
+    assert repeat.title in soup.select_one(".selection-review").get_text()
+    status = json.loads((output / "run-status.json").read_text(encoding="utf-8"))
+    assert status["supplemental_items"] == 1
 
 
 def test_no_llm_fallback_shows_source_text():

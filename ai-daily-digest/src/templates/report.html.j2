@@ -247,6 +247,9 @@
   {% endif %}
   <div class="footer">
     <span class="badge">{{ item.source }}</span>
+    {% if item.meta.coverage_note %}
+    <span class="badge" title="{{ item.meta.coverage_note }}">补充报道{% if item.meta.short_source %} · 资料简短{% endif %}</span>
+    {% endif %}
     {% if item.meta.follow_up_date %}
     <a class="discussion-link" href="{{ item.meta.follow_up_date }}.html">上一期报道</a>
     {% endif %}
@@ -254,7 +257,7 @@
     <a class="discussion-link" href="{{ related.url }}" target="_blank" rel="noopener">相关报道 · {{ related.source }}</a>
     {% endfor %}
     {% for tag in item.meta.topic_tags|default([]) %}<span class="badge tag">{{ tag }}</span>{% endfor %}
-    {% if item.importance >= 4 %}<span class="badge hot">🔥 重点关注</span>{% endif %}
+    {% if item.importance >= 4 and not item.meta.coverage_note %}<span class="badge hot">🔥 重点关注</span>{% endif %}
     {% if item.meta.quality_score %}<span class="badge quality">质量 {{ item.meta.quality_score|int }}</span>{% endif %}
     {% set quality_reasons = item.meta.quality_reasons|default([]) %}
     {% for reason in quality_reasons[:2] %}<span class="stars">{{ reason }}</span>{% endfor %}
@@ -317,7 +320,7 @@
         <h2>{{ section.title }}</h2>
         <span class="sub">{{ section.subtitle }}</span>
       </div>
-      <span class="section-total">{{ section.entries|length }} 条精选</span>
+      <span class="section-total">{{ section.entries|length }} 条报道</span>
     </div>
     {% if section.topics %}
     <div class="paper-topic-tabs" role="tablist" aria-label="论文专题">
@@ -335,7 +338,7 @@
          role="tabpanel" aria-labelledby="tab-{{ topic.key }}">
       <div class="paper-topic-meta">
         <span class="sub">{{ topic.subtitle }}</span>
-        <span class="section-total">{{ topic.entries|length }} 条精选</span>
+        <span class="section-total">{{ topic.entries|length }} 条报道</span>
       </div>
       <div class="entries" id="entries-{{ topic.key }}">
         {% for item in topic.entries %}
