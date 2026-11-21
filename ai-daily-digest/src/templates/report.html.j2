@@ -225,7 +225,7 @@
   {% endif %}
   {% if item.meta.link_status == 'rss_only' %}
   <details class="rss-fulltext" id="rss-full-{{ item.meta.article_id }}">
-    <summary>阅读 RSS 全文 · 原文链接暂不可用</summary>
+    <summary>展开全文（RSS 未提供原文直链）</summary>
     <div class="rss-body">{{ item.meta.rss_full_text }}</div>
     {% if item.meta.rss_truncated %}<p>RSS 正文较长，此处展示节选。</p>{% endif %}
   </details>
@@ -276,7 +276,7 @@
           {% if item.meta.follow_up_date %}<span>后续</span>{% endif %}
           <a href="#{{ item.meta.article_id }}">查看摘要 ↓</a>
           {% if item.meta.link_status == 'rss_only' %}
-          <a href="{{ item.meta.reading_url }}">阅读 RSS 全文 ↓</a>
+          <a href="{{ item.meta.reading_url }}">展开全文 ↓</a>
           {% else %}
           <a href="{{ item.url }}" target="_blank" rel="noopener">阅读原文 ↗</a>
           {% endif %}

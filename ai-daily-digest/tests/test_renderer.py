@@ -54,7 +54,7 @@ def test_rss_only_story_opens_escaped_feed_text_instead_of_search_page(cfg):
     card = soup.select_one("#section-media article")
     detail = card.select_one("details.rss-fulltext")
     assert card.select_one(".title a")["href"] == "#" + detail["id"]
-    assert "原文链接暂不可用" in detail.get_text()
+    assert detail.summary.get_text(strip=True) == "展开全文（RSS 未提供原文直链）"
     assert "&lt;script&gt;untrusted&lt;/script&gt;" in html
     assert "<script>untrusted</script>" not in html
     assert not soup.select('a[href*="weixin.sogou.com"]')
