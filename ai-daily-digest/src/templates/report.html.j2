@@ -59,6 +59,11 @@
     background: rgba(255,255,255,.1);
   }
   .archive-link:hover { background: rgba(255,255,255,.18); }
+  .header-feedback {
+    margin-top: 12px; font-size: 13px; line-height: 1.65;
+    color: rgba(255,255,255,.92); overflow-wrap: anywhere;
+  }
+  .header-feedback a { color: #fff; font-weight: 650; text-underline-offset: 3px; }
   .overview {
     background: linear-gradient(135deg, #fff 0%, #f8f7ff 100%);
     border: 1px solid #e3e1fb; border-radius: 20px;
@@ -270,6 +275,10 @@
       <div class="date">{{ date_str }} · {{ weekday }}</div>
       <a class="archive-link" href="archive.html">查看最近 31 天</a>
     </div>
+    <p class="header-feedback">
+      对早报有改进建议？欢迎<a href="https://github.com/YabingHu/efficiency_tools/issues/new" target="_blank" rel="noopener">提交 GitHub Issue</a>，
+      或发邮件到 <a href="mailto:huyabing0721@gmail.com">huyabing0721@gmail.com</a> 联系我。
+    </p>
   </div>
 </header>
 <main class="container">
